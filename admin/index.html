@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Smartscan Admin</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #eef2f7; color: #212529; font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .hidden { display: none !important; }
+  button, input, select, textarea { font: inherit; }
+  button { cursor: pointer; border: 1px solid #ced4da; background: #fff; border-radius: 6px; padding: 6px 12px; }
+  button:hover { background: #f1f5f9; }
+  button.primary { background: #0d6efd; border-color: #0d6efd; color: #fff; }
+  button.primary:hover { background: #0a58ca; }
+  button.danger { color: #dc3545; border-color: #f1aeb5; }
+  button.danger:hover { background: #fdecee; }
+  input, select, textarea { border: 1px solid #ced4da; border-radius: 6px; padding: 6px 8px; background: #fff; width: 100%; }
+
+  #login { max-width: 360px; margin: 12vh auto; background: #fff; padding: 28px; border-radius: 12px; box-shadow: 0 2px 12px rgba(16, 24, 40, .1); display: grid; gap: 12px; }
+  #login h1 { margin: 0; font-size: 1.3rem; }
+  .err { color: #b00020; min-height: 1.2em; }
+
+  header { background: #031521; color: #fff; display: flex; align-items: center; gap: 12px; padding: 12px 20px; }
+  header h1 { margin: 0; font-size: 1.15rem; flex: 1; }
+  header h1 span { color: #9fb6c8; font-weight: 400; font-size: .9rem; margin-left: 8px; }
+  header button { background: transparent; color: #fff; border-color: rgba(255, 255, 255, .6); }
+  header button:hover { background: rgba(255, 255, 255, .15); }
+  .layout { display: grid; grid-template-columns: 240px 1fr; gap: 16px; padding: 16px 20px; align-items: start; }
+  nav { background: #fff; border-radius: 10px; padding: 8px; box-shadow: 0 1px 6px rgba(16, 24, 40, .08); }
+  nav button { display: flex; justify-content: space-between; width: 100%; border: 0; background: transparent; text-align: left; padding: 8px 10px; border-radius: 6px; }
+  nav button.active { background: #0d6efd; color: #fff; }
+  nav button .n { opacity: .7; font-size: .85em; }
+  main { background: #fff; border-radius: 10px; padding: 16px; box-shadow: 0 1px 6px rgba(16, 24, 40, .08); min-width: 0; }
+  .bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+  .bar h2 { margin: 0; font-size: 1.1rem; flex: 1; }
+  .bar input[type=search] { width: 240px; }
+  .wrap { overflow: auto; border: 1px solid #dee2e6; border-radius: 8px; max-height: 68vh; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { padding: 6px 10px; border-bottom: 1px solid #eef0f2; text-align: left; vertical-align: top; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  th { position: sticky; top: 0; background: #e7f1ff; z-index: 1; font-size: .85em; }
+  th small { color: #6b7280; font-weight: 400; }
+  td.null { color: #9ca3af; font-style: italic; }
+  td.act { white-space: nowrap; width: 1%; }
+  .pager { display: flex; gap: 10px; align-items: center; margin-top: 12px; }
+  .pager .sp { flex: 1; }
+  .msg { padding: 8px 12px; border-radius: 6px; margin-bottom: 10px; }
+  .msg.ok { background: #d1e7dd; color: #0f5132; }
+  .msg.err { background: #f8d7da; color: #842029; }
+
+  .modal { position: fixed; inset: 0; background: rgba(0, 0, 0, .5); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 10; }
+  .box { background: #fff; border-radius: 12px; padding: 20px; width: 100%; max-width: 560px; max-height: 90vh; overflow: auto; }
+  .box h3 { margin: 0 0 12px; }
+  .box label { display: block; margin-bottom: 10px; font-weight: 600; font-size: .85em; }
+  .box label small { color: #6b7280; font-weight: 400; }
+  .box textarea { min-height: 64px; resize: vertical; font-weight: 400; }
+  .box .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
+  @media (max-width: 800px) { .layout { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<form id="login" class="hidden">
+  <h1>Smartscan Admin</h1>
+  <label>User <input id="lUser" autocomplete="username" required></label>
+  <label>Password <input id="lPass" type="password" autocomplete="current-password" required></label>
+  <label style="display:flex;gap:8px;align-items:center"><input id="lShow" type="checkbox" style="width:auto"> Show password</label>
+  <div id="lErr" class="err"></div>
+  <button class="primary">Sign in</button>
+</form>
+
+<div id="app" class="hidden">
+  <header>
+    <h1>Smartscan Admin <span>Database management</span></h1>
+    <button id="backup" type="button">Download backup</button>
+    <button id="logout" type="button">Sign out</button>
+  </header>
+  <div class="layout">
+    <nav id="tables"></nav>
+    <main>
+      <div id="status"></div>
+      <div class="bar">
+        <h2 id="title">Select a table</h2>
+        <input id="search" type="search" placeholder="Search rows…" class="hidden">
+        <button id="add" class="primary hidden" type="button">+ Add row</button>
+      </div>
+      <div id="grid"></div>
+      <div id="pager" class="pager hidden">
+        <button id="prev" type="button">&larr; Prev</button>
+        <span id="pageInfo"></span>
+        <button id="next" type="button">Next &rarr;</button>
+        <span class="sp"></span>
+        <label>Rows per page <select id="size" style="width:auto"><option>25</option><option>50</option><option>100</option></select></label>
+      </div>
+    </main>
+  </div>
+</div>
+
+<div id="modal" class="modal hidden">
+  <form id="form" class="box"></form>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const api = async (url, method = 'GET', body) => {
+  const r = await fetch('/admin/api' + url, { method, headers: body ? { 'Content-Type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined });
+  const j = await r.json().catch(() => ({}));
+  if (r.status === 401 && url !== '/login') { showLogin(); throw new Error('Signed out'); }
+  if (!r.ok) throw new Error(j.error || 'Request failed');
+  return j;
+};
+const flash = (text, cls = 'ok') => { $('status').innerHTML = text ? `<div class="msg ${cls}">${esc(text)}</div>` : ''; };
+
+let table = null, page = 1, size = 25, term = '', data = null;
+
+const showLogin = () => { $('app').classList.add('hidden'); $('login').classList.remove('hidden'); $('lUser').focus(); };
+const showApp = async () => { $('login').classList.add('hidden'); $('app').classList.remove('hidden'); await loadTables(); if (table) loadRows(); };
+
+$('lShow').onchange = () => { $('lPass').type = $('lShow').checked ? 'text' : 'password'; };
+$('login').onsubmit = async (e) => {
+  e.preventDefault();
+  try { await api('/login', 'POST', { user: $('lUser').value.trim(), password: $('lPass').value }); $('lPass').value = ''; $('lShow').checked = false; $('lShow').onchange(); $('lErr').textContent = ''; showApp(); }
+  catch (err) { $('lErr').textContent = err.message; }
+};
+$('logout').onclick = async () => { await fetch('/admin/api/logout', { method: 'POST' }); table = null; showLogin(); };
+$('backup').onclick = () => { location.href = '/admin/api/backup'; };
+
+async function loadTables() {
+  const list = await api('/tables');
+  $('tables').innerHTML = list.map((t) => `<button data-t="${esc(t.name)}" class="${t.name === table ? 'active' : ''}"><span>${esc(t.name)}</span><span class="n">${t.count}</span></button>`).join('');
+  $('tables').querySelectorAll('button').forEach((b) => b.onclick = () => { table = b.dataset.t; page = 1; term = ''; $('search').value = ''; flash(''); loadTables(); loadRows(); });
+}
+
+async function loadRows() {
+  try {
+    data = await api(`/table/${encodeURIComponent(table)}?page=${page}&size=${size}&q=${encodeURIComponent(term)}`);
+  } catch (e) { return flash(e.message, 'err'); }
+  $('title').textContent = `${table} (${data.total})`;
+  for (const id of ['search', 'add']) $(id).classList.remove('hidden');
+  $('pager').classList.remove('hidden');
+  const cols = data.columns;
+  $('grid').innerHTML = `<div class="wrap"><table><thead><tr><th></th>${cols.map((c) => `<th>${esc(c.name)} <small>${esc(c.type)}${c.pk ? ' · PK' : ''}</small></th>`).join('')}</tr></thead><tbody>${
+    data.rows.map((r) => `<tr><td class="act"><button data-edit="${r._rid}">Edit</button> <button class="danger" data-del="${r._rid}">Delete</button>${
+      table === 'users' ? ` <button data-status="${esc(r.userid)}" data-to="${r.status === 'active' ? 'disabled' : 'active'}">${r.status === 'active' ? 'Disable' : 'Activate'}</button> <button data-pw="${esc(r.userid)}">Set password</button>` : ''}</td>${
+      cols.map((c) => r[c.name] === null ? '<td class="null">NULL</td>' : `<td title="${esc(r[c.name])}">${esc(r[c.name])}</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${cols.length + 1}">No rows.</td></tr>`}</tbody></table></div>`;
+  $('grid').querySelectorAll('[data-edit]').forEach((b) => b.onclick = () => openForm(data.rows.find((r) => String(r._rid) === b.dataset.edit)));
+  $('grid').querySelectorAll('[data-del]').forEach((b) => b.onclick = () => del(b.dataset.del));
+  $('grid').querySelectorAll('[data-status]').forEach((b) => b.onclick = async () => {
+    try { await api(`/users/${encodeURIComponent(b.dataset.status)}/status`, 'POST', { status: b.dataset.to }); flash(`${b.dataset.status} is now ${b.dataset.to}.`); loadRows(); }
+    catch (e) { flash(e.message, 'err'); }
+  });
+  $('grid').querySelectorAll('[data-pw]').forEach((b) => b.onclick = async () => {
+    const pw = prompt(`New password for ${b.dataset.pw} (at least 8 characters). They will be signed out everywhere.`);
+    if (pw === null) return;
+    try { await api(`/users/${encodeURIComponent(b.dataset.pw)}/password`, 'POST', { password: pw }); flash(`Password set for ${b.dataset.pw}.`); }
+    catch (e) { flash(e.message, 'err'); }
+  });
+  const pages = Math.max(1, Math.ceil(data.total / size));
+  $('pageInfo').textContent = `Page ${page} of ${pages}`;
+  $('prev').disabled = page <= 1; $('next').disabled = page >= pages;
+}
+
+$('prev').onclick = () => { page--; loadRows(); };
+$('next').onclick = () => { page++; loadRows(); };
+$('size').onchange = () => { size = Number($('size').value); page = 1; loadRows(); };
+let timer; $('search').oninput = () => { clearTimeout(timer); timer = setTimeout(() => { term = $('search').value.trim(); page = 1; loadRows(); }, 300); };
+
+async function del(rid) {
+  const warn = table === 'users' ? 'Delete this ACCOUNT and ALL of its data (household, members, categories, inventory, invoices)? This cannot be undone.' : `Delete this row from "${table}"? This cannot be undone.`;
+  if (!confirm(warn)) return;
+  try { await api(`/table/${encodeURIComponent(table)}/${rid}`, 'DELETE'); flash('Row deleted.'); loadTables(); loadRows(); }
+  catch (e) { flash(e.message, 'err'); }
+}
+
+function openForm(row) {
+  const f = $('form'), cols = data.columns;
+  f.innerHTML = `<h3>${row ? 'Edit row' : 'Add row'} — ${esc(table)}</h3>${cols.map((c) => {
+    const v = row ? row[c.name] : '', big = String(v ?? '').length > 60 || /text|json/i.test(c.type) && c.name !== 'key';
+    return `<label>${esc(c.name)} <small>${esc(c.type)}${c.pk ? ' · PK' : ''}${c.notnull ? ' · required' : ''}</small>${
+      big ? `<textarea name="${esc(c.name)}">${esc(v ?? '')}</textarea>` : `<input name="${esc(c.name)}" value="${esc(v ?? '')}">`}</label>`;
+  }).join('')}<div id="formErr" class="err"></div><div class="row"><button type="button" id="cancel">Cancel</button><button class="primary">Save</button></div>`;
+  $('modal').classList.remove('hidden');
+  $('cancel').onclick = closeForm;
+  f.onsubmit = async (e) => {
+    e.preventDefault();
+    const values = {}; new FormData(f).forEach((v, k) => { values[k] = v; });
+    try {
+      await api(`/table/${encodeURIComponent(table)}${row ? '/' + row._rid : ''}`, row ? 'PUT' : 'POST', { values });
+      closeForm(); flash(row ? 'Row updated.' : 'Row added.'); loadTables(); loadRows();
+    } catch (err) { $('formErr').textContent = err.message; }
+  };
+}
+const closeForm = () => $('modal').classList.add('hidden');
+$('add').onclick = () => openForm(null);
+$('modal').onclick = (e) => { if (e.target === $('modal')) closeForm(); };
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeForm(); });
+
+fetch('/admin/api/session').then((r) => r.json()).then((j) => j.loggedIn ? showApp() : showLogin());
+</script>
+</body>
+</html>

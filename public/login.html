@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smartscan - Login</title>
+<style>
+  body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: linear-gradient(135deg, #0a58ca, #0d6efd 50%, #6610f2); display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 16px; box-sizing: border-box; }
+  form { background: #fff; padding: 30px 32px; border-radius: 14px; box-shadow: 0 10px 30px rgba(0,0,0,.3); width: 100%; max-width: 340px; }
+  h1 { margin: 0 0 20px; font-size: 1.6rem; text-align: center; color: #0a58ca; }
+  label { display: block; margin-bottom: 12px; font-size: .9rem; font-weight: 600; color: #495057; }
+  input { width: 100%; box-sizing: border-box; padding: 9px; margin-top: 4px; font-size: 1rem; border: 1px solid #ced4da; border-radius: 6px; }
+  input:focus { outline: 0; border-color: #86b7fe; box-shadow: 0 0 0 3px rgba(13,110,253,.2); }
+  button { width: 100%; padding: 10px; font-size: 1rem; font-weight: 600; cursor: pointer; background: #0d6efd; color: #fff; border: 0; border-radius: 6px; }
+  button:hover { background: #0a58ca; }
+  #err { color: #b00020; min-height: 1.2em; font-size: .85rem; margin-bottom: 8px; }
+</style>
+</head>
+<body>
+<form id="f">
+  <h1>Smartscan</h1>
+  <label>User ID <input id="u" autocomplete="username" autofocus required></label>
+  <label>Password <input id="p" type="password" autocomplete="current-password" required></label>
+  <label style="display:flex;align-items:center;gap:8px;font-weight:400"><input id="show" type="checkbox" style="width:auto;margin:0"> Show password</label>
+  <div id="err"></div>
+  <button>Log in</button>
+</form>
+<script>
+document.getElementById('show').onchange = (e) => { document.getElementById('p').type = e.target.checked ? 'text' : 'password'; };
+document.getElementById('f').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const r = await fetch('/login', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userid: document.getElementById('u').value.trim(), password: document.getElementById('p').value }) });
+  if (r.ok) location.href = '/';
+  else document.getElementById('err').textContent = (await r.json().catch(() => ({}))).error || 'Login failed.';
+});
+</script>
+</body>
+</html>

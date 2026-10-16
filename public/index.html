@@ -1,0 +1,786 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smartscan</title>
+<style>
+  body { font: 15px system-ui, sans-serif; max-width: 1440px; margin: 0 auto; padding: 16px; color: #222; }
+  th.num { text-align: right; }
+  .comp { display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap; }
+  .comp table { flex: 1 1 480px; width: auto; }
+  #compChart, #patChart { flex: 0 0 auto; }
+  #compChart .legend, #patChart .legend { font-size: 15px; margin-top: 6px; }
+  #compChart .sw, #patChart .sw, #invChart .sw { display: inline-block; width: 10px; height: 10px; margin-right: 4px; }
+  @media print {
+    body > *:not(#consumption) { display: none !important; }
+    #consumption > :not(.statpane), .statpane.hidden, .no-print, .subnav { display: none !important; }
+    #consumption .statpane { display: block; }
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+  .subnav { margin: 8px 0; }
+  .subnav button { padding: 6px 12px; border: 1px solid #ccc; background: #f6f6f6; cursor: pointer; }
+  .subnav button.active { background: #2563eb; color: #fff; border-color: #2563eb; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+  th, td { border-bottom: 1px solid #e5e5e5; padding: 6px; text-align: left; }
+  td input { width: 100%; box-sizing: border-box; padding: 4px; }
+  td.num { text-align: right; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin: 8px 0; }
+  .primary { background: #2563eb; color: #fff; border: 0; padding: 8px 16px; border-radius: 4px; cursor: pointer; }
+  .msg { padding: 8px; border-radius: 4px; margin: 8px 0; }
+  .err { background: #fee2e2; } .ok { background: #dcfce7; } .warn { background: #fef3c7; }
+  tr.low { background: #fef3c7; }
+  .hidden { display: none; }
+  label { display: flex; flex-direction: column; font-size: 15px; gap: 2px; }
+  #hhAges label { width: 70px; }
+  td.dup { background: #fef3c7; font-size: 15px; }
+  .pager { display: flex; gap: 10px; align-items: center; justify-content: center; font-size: 15px; }
+  /* Inventory: 12 columns, so a smaller (still readable) font and tighter cells. */
+  #inventory table { font-size: 15px; table-layout: fixed; }
+  #inventory th { font-size: 15px; }
+  #inventory th, #inventory td { padding: 4px 3px; vertical-align: middle; word-break: break-word; }
+  #inventory td input, #inventory td select { font-size: 15px; padding: 2px; width: 100%; min-width: 0; box-sizing: border-box; }
+  #inventory td input[type=number] { text-align: right; }
+  #inventory td button { padding: 2px 6px; cursor: pointer; }
+  #inventory th:nth-child(1) { width: 17%; } #inventory th:nth-child(2) { width: 13%; }
+  #inventory th:nth-child(3) { width: 8%; } #inventory th:nth-child(4) { width: 9%; }
+  #inventory th:nth-child(5), #inventory th:nth-child(7), #inventory th:nth-child(9) { width: 7%; }
+  #inventory th:nth-child(6), #inventory th:nth-child(11) { width: 5%; }
+  #inventory th:nth-child(8), #inventory th:nth-child(10) { width: 7%; }
+  #inventory th:nth-child(12) { width: 9%; }
+  /* Stock-share bar: one full-width stacked bar with a wrapped legend. */
+  #invChart, #aiShare { margin: 8px 0 12px; }
+  #invChart .bar, #aiShare .bar { display: flex; height: 26px; border-radius: 4px; overflow: hidden; }
+  #invChart .bar span, #aiShare .bar span { color: #fff; font-size: 15px; font-weight: 600; line-height: 26px; text-align: center; overflow: hidden; white-space: nowrap; }
+  #invChart .legend, #aiShare .legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 15px; margin-top: 6px; }
+  #aiShare .sw { display: inline-block; width: 10px; height: 10px; margin-right: 4px; }
+  #invoices table table { font-size: 15px; margin: 4px 0; }
+  #invoices table table th { font-size: 15px; }
+  /* AI Stats */
+  #aiTable { font-size: 15px; table-layout: fixed; }
+  #aiTable th { font-size: 15px; }
+  #aiTable th, #aiTable td { padding: 4px 3px; word-break: break-word; }
+  #aiTable th:nth-child(1) { width: 16%; } #aiTable th:nth-child(2) { width: 11%; } #aiTable th:nth-child(3) { width: 8%; }
+  #aiTable th:nth-child(13) { width: 11%; }
+  #aiInsights ul { margin: 4px 0; padding-left: 20px; }
+  .badge { padding: 1px 6px; border-radius: 8px; font-size: 15px; white-space: nowrap; background: #dcfce7; }
+  .badge.warn { background: #fef3c7; } .badge.err { background: #fee2e2; }
+  .wd { display: flex; gap: 8px; align-items: flex-end; height: 120px; margin: 4px 0 16px; }
+  .wd > div { flex: 1; text-align: center; font-size: 15px; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; }
+  .wd i { display: block; background: #2563eb; border-radius: 3px 3px 0 0; min-height: 1px; }
+  .wd.spend i { background: #16a34a; }
+  /* Scan new invoice: 12 columns, so use a smaller font and tighter cells to keep each row fully visible. */
+  #review table { font-size: 15px; table-layout: fixed; }
+  #review th { font-size: 15px; }
+  #review th, #review td { padding: 3px 2px; vertical-align: top; }
+  #review td input, #review td select { font-size: 15px; padding: 2px; width: 100%; box-sizing: border-box; min-width: 0; }
+  #review td input[type=number], #review td.num, #review th.num { text-align: right; }
+  #review td.dup { font-size: 15px; word-break: break-word; }
+  #review th:nth-child(1) { width: 15%; }
+  #review th:nth-child(2), #review th:nth-child(3), #review th:nth-child(4) { width: 8%; }
+  #review th:nth-child(5), #review th:nth-child(7), #review th:nth-child(8) { width: 6%; }
+  #review th:nth-child(6), #review th:nth-child(9), #review th:nth-child(10) { width: 5%; }
+  #review th:nth-child(11) { width: 7%; }
+  #review th:nth-child(12) { width: 12%; }
+  #review th:nth-child(13) { width: 3%; }
+
+  /* ---- Theme (Bootstrap 5 palette; hand-written so it can't clash with the app's own .row/.badge/.hidden classes) ---- */
+  :root { --primary: #0d6efd; --primary-dk: #0a58ca; --indigo: #6610f2; --success: #198754; --warning: #ffc107; --danger: #dc3545; --info: #0dcaf0; --bg: #eef2f7; --line: #dee2e6; }
+  body { max-width: none; padding: 0; background: var(--bg); color: #212529; font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  body > section { max-width: 1440px; margin: 18px auto; padding: 20px; background: #fff; border-radius: 12px; box-shadow: 0 2px 12px rgba(16, 24, 40, .08); overflow-x: auto; }
+  body > section.hidden { display: none; }
+  @media (max-width: 1480px) { body > section { margin: 12px; } }
+  h2 { margin: 0 0 12px; font-size: 1.35rem; color: var(--primary-dk); border-bottom: 2px solid var(--line); padding-bottom: 8px; }
+  h3 { color: #343a40; }
+
+  body { background: #031521; }
+  .dot { color: #e5195e; }
+  .util { background: #020f18; border-bottom: 1px solid #12303f; }
+  .util-in { max-width: 1440px; margin: 0 auto; padding: 8px 20px; display: flex; justify-content: flex-end; gap: 26px; }
+  .util a { color: #fff; font-weight: 600; cursor: pointer; text-decoration: none; }
+  .util a:hover { color: #7fb2ff; }
+  .topbar { position: sticky; top: 0; z-index: 50; background: #031521; border-bottom: 1px solid #12303f; }
+  .topbar-in { max-width: 1440px; margin: 0 auto; padding: 14px 20px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .brand { color: #fff; font-weight: 700; font-size: 1.7rem; text-decoration: none; letter-spacing: .2px; margin-right: 28px; white-space: nowrap; }
+  .brand { display: inline-flex; align-items: center; }
+  .brand .brand-text { display: inline-flex; flex-direction: column; line-height: 1.1; }
+  .brand .tagline { font-size: .62rem; font-weight: 500; color: #9fb6c8; letter-spacing: .3px; margin-top: 3px; }
+  .brand .logo { display: inline-block; background: #fff; color: var(--primary); border-radius: 8px; width: 32px; height: 32px; line-height: 32px; text-align: center; font-size: 1.1rem; margin-right: 8px; vertical-align: 2px; }
+  .nav { display: flex; gap: 6px; flex: 1 1 auto; align-items: center; }
+  .menu { position: relative; }
+  .mbtn, .mlink { background: transparent; border: 0; color: #fff; font-size: 15px; font-weight: 600; padding: 10px 16px; cursor: pointer; border-radius: 8px; }
+  .mbtn i { font-style: normal; font-size: 11px; margin-left: 4px; }
+  .mbtn:hover, .mlink:hover, .menu.open > .mbtn { background: rgba(255, 255, 255, .12); }
+  .mbtn.active { box-shadow: inset 0 -3px 0 var(--primary); }
+  .dd { display: none; position: absolute; top: calc(100% + 6px); left: 0; z-index: 60; min-width: 230px; background: #fff; border-radius: 12px; padding: 8px; box-shadow: 0 12px 32px rgba(0, 0, 0, .4); }
+  .dd-wide { display: none; grid-template-columns: 1fr 1fr; gap: 2px 8px; min-width: 500px; }
+  .menu.open > .dd { display: block; }
+  .menu.open > .dd-wide { display: grid; }
+  .dd button { display: block; width: 100%; text-align: left; background: transparent; border: 0; color: #1f2937; font-size: 15px; padding: 9px 12px; border-radius: 8px; cursor: pointer; white-space: nowrap; }
+  .dd button:hover { background: #e7f1ff; color: var(--primary-dk); }
+  .dd button.active { background: var(--primary); color: #fff; font-weight: 600; }
+  #signup, #logout { background: transparent; color: #fff; border: 2px solid #fff; border-radius: 999px; padding: 10px 28px; cursor: pointer; font-size: 15px; font-weight: 700; transition: background .15s, color .15s; }
+  #signup { margin-left: auto; margin-right: 10px; }
+  #logout { margin-left: auto; }
+  #signup + #logout { margin-left: 0; }
+  #signup:hover, #logout:hover { background: #fff; color: #031521; }
+  body.authed #signup { display: none; }
+  #accountWrap { display: none; margin-left: auto; }
+  body.authed #accountWrap { display: block; }
+  body.authed #accountWrap + #signup + #logout { margin-left: 0; }
+  #scanLink { display: none; }
+  body.authed #scanLink { display: block; }
+  #scanLink.active { box-shadow: inset 0 -3px 0 var(--primary); }
+  .dd-right { left: auto; right: 0; min-width: 0; padding: 10px; border: 1px solid #e5e7eb; }
+  .menu.open > .dd-right { display: grid; grid-template-columns: repeat(3, auto); gap: 4px 10px; }
+  .dd-who { grid-column: 1 / -1; display: flex; align-items: baseline; gap: 8px; padding: 4px 12px 8px; margin-bottom: 4px; border-bottom: 1px solid #e5e7eb; font-size: 13px; color: #6b7280; }
+  .dd-who:empty { display: none; }
+  .dd-who b { color: #1f2937; font-size: 15px; }
+  .dd-who span { margin-left: auto; font-size: 12px; }
+  .dd-col { min-width: 150px; }
+  .dd-col + .dd-col { border-left: 1px solid #e5e7eb; padding-left: 10px; }
+  .dd-h { display: flex; align-items: center; gap: 6px; padding: 4px 12px 6px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; color: var(--primary-dk); white-space: nowrap; }
+  .dd-ic { font-size: 13px; }
+  .dd-right button { padding: 6px 12px; font-size: 14px; }
+  #navToggle { display: none; margin-left: auto; background: transparent; border: 1px solid rgba(255, 255, 255, .6); color: #fff; border-radius: 6px; font-size: 1.3rem; line-height: 1; padding: 4px 10px; cursor: pointer; }
+  @media (max-width: 900px) {
+    .topbar-in { padding: 10px 16px; }
+    .brand { margin-right: 0; font-size: 1.4rem; }
+    #navToggle { display: block; }
+    .nav { display: none; order: 3; flex: 1 1 100%; flex-direction: column; align-items: stretch; }
+    .nav.open { display: flex; }
+    .dd, .dd-wide { position: static; box-shadow: none; background: rgba(255, 255, 255, .06); min-width: 0; margin: 2px 0 6px; }
+    .dd button { color: #e5edf5; }
+    .dd button:hover { background: rgba(255, 255, 255, .12); color: #fff; }
+    .dd-wide { grid-template-columns: 1fr; }
+    .mbtn, .mlink { width: 100%; text-align: left; }
+    #accountWrap { order: 2; margin-left: auto; }
+    body.authed #accountWrap + #signup + #logout { margin-left: 0; }
+    .menu.open > .dd-right { grid-template-columns: 1fr; }
+    .dd-col + .dd-col { border-left: 0; padding-left: 0; }
+    .dd-h { color: #9fb6c8; }
+    #signup, #logout { order: 2; margin-left: 0; padding: 6px 18px; }
+    #signup { margin-right: 6px; }
+  }
+
+  /* Home / landing */
+  #home { background: none; box-shadow: none; max-width: none; padding: 0; margin: 0; overflow: visible; color: #fff; }
+  #home .wrap { max-width: 1440px; margin: 0 auto; padding: 0 20px; }
+  #home .hero { display: grid; grid-template-columns: 1.05fr 1fr; gap: 48px; align-items: center; padding-top: 56px; padding-bottom: 56px; }
+  #home h1 { font-size: clamp(2.2rem, 5vw, 3.7rem); line-height: 1.1; margin: 0 0 22px; font-weight: 700; }
+  #home .hero p { font-size: 1.1rem; line-height: 1.7; color: #d4dfe9; max-width: 520px; margin: 0 0 30px; }
+  #home .hero img { width: 100%; height: auto; display: block; border-radius: 6px; box-shadow: 0 16px 40px rgba(0, 0, 0, .45); }
+  #home .cta { display: flex; gap: 14px; flex-wrap: wrap; }
+  #home .cta button { border-radius: 999px; padding: 15px 34px; font-size: 1rem; font-weight: 700; cursor: pointer; transition: background .15s, color .15s; }
+  #home .btn-blue { background: #2f7bf0; border: 2px solid #2f7bf0; color: #fff; }
+  #home .btn-blue:hover { background: #1f62cc; border-color: #1f62cc; }
+  #home .btn-line { background: transparent; border: 2px solid #fff; color: #fff; }
+  #home .btn-line:hover { background: #fff; color: #031521; }
+  #home .band { padding-top: 24px; padding-bottom: 36px; scroll-margin-top: 90px; }
+  #home h2 { color: #fff; border-bottom: 0; font-size: 1.8rem; margin-bottom: 18px; }
+  #home .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 18px; }
+  #home .two { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  #home .card { background: #0b2738; border: 1px solid #17445f; border-radius: 14px; padding: 22px; }
+  #home .card h3 { color: #fff; margin: 8px 0; font-size: 1.15rem; }
+  #home .card p, #home .card li { color: #b9c9d6; line-height: 1.7; margin: 0; }
+  #home .card ul { margin: 0; padding-left: 20px; }
+  #home .card ul.tips-list { list-style: none; padding: 0; display: grid; gap: 14px; counter-reset: tip; }
+  #home .tips-list li { position: relative; padding-left: 44px; min-height: 30px; display: flex; align-items: center; counter-increment: tip; }
+  #home .tips-list li::before { content: "\2713"; position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: 30px; height: 30px; border-radius: 50%; background: linear-gradient(135deg, #2f7bf0, #6610f2); color: #fff; font-size: 15px; font-weight: 700; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 4px rgba(47, 123, 240, .2); }
+  #home .how-grid { display: grid; grid-template-columns: minmax(280px, 5fr) 7fr; gap: 28px; align-items: stretch; }
+  #home .steps { display: flex; flex-direction: column; gap: 18px; }
+  #home .steps .card { flex: 1; display: grid; grid-template-columns: 34px 1fr; column-gap: 16px; align-content: center; }
+  #home .steps .card b { grid-row: 1 / span 2; align-self: start; margin-top: 6px; }
+  #home .steps .card h3 { margin: 0 0 6px; }
+  #home .shot { margin: 0; display: flex; flex-direction: column; justify-content: center; text-align: center; }
+  @media (max-width: 860px) { #home .how-grid { grid-template-columns: 1fr; } }
+  #home .shot img { width: 100%; height: auto; display: block; border-radius: 14px; border: 1px solid #17445f; box-shadow: 0 18px 50px rgba(0,0,0,.45), 0 0 0 6px rgba(47,123,240,.08); }
+  #home .shot figcaption { margin-top: 12px; color: #b9c9d6; font-size: .95rem; }
+  #home .card b { display: inline-block; width: 34px; height: 34px; line-height: 34px; text-align: center; border-radius: 50%; background: #2f7bf0; color: #fff; }
+  #home .stores { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 22px; }
+  .store { display: inline-flex; align-items: center; gap: 10px; background: #000; color: #fff; text-decoration: none; border: 1px solid #7d8d99; border-radius: 10px; padding: 7px 16px 7px 12px; transition: border-color .15s, transform .15s; }
+  .store:hover { border-color: #fff; transform: translateY(-1px); }
+  .store span { display: flex; flex-direction: column; line-height: 1.15; }
+  .store small { font-size: 11px; letter-spacing: .3px; }
+  .store b { font-size: 19px; font-weight: 600; }
+  #contact { scroll-margin-top: 90px; }
+  #home .plan .price { font-size: 2rem; font-weight: 700; color: #fff; margin: 6px 0 12px; }
+  #home .plan .price small { font-size: 1rem; font-weight: 400; color: #b9c9d6; }
+  #home .plan.pop { border-color: #2f7bf0; box-shadow: 0 0 0 2px #2f7bf0; }
+  #home .plan button { margin-top: 16px; width: 100%; border-radius: 999px; padding: 12px; font-weight: 700; cursor: pointer; }
+  @media (max-width: 900px) { #home .hero, #home .two { grid-template-columns: 1fr; gap: 28px; padding-top: 32px; } }
+
+  .subnav { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
+  .subnav button { border: 1px solid var(--primary); background: #fff; color: var(--primary); border-radius: 999px; padding: 5px 14px; cursor: pointer; transition: background .15s; }
+  .subnav button:hover { background: #e7f1ff; }
+  .subnav button.active { background: var(--primary); color: #fff; }
+
+  button, select, input, textarea { font-family: inherit; }
+  section button, section select, section input, section textarea { font-size: 15px; }
+  input:not([type=checkbox]):not([type=radio]), select, textarea { border: 1px solid #ced4da; border-radius: 6px; padding: 6px 8px; background: #fff; }
+  input:focus, select:focus, textarea:focus { outline: 0; border-color: #86b7fe; box-shadow: 0 0 0 3px rgba(13, 110, 253, .2); }
+  button { border-radius: 6px; }
+  section button:not(.primary):not([data-tab]) { border: 1px solid #adb5bd; background: #f8f9fa; padding: 5px 12px; cursor: pointer; }
+  section button:not(.primary):not([data-tab]):hover { background: #e9ecef; }
+  .subnav button, .subnav button:hover { border-color: var(--primary); }
+  section .subnav button { background: #fff; color: var(--primary); border: 1px solid var(--primary); }
+  section .subnav button:hover { background: #e7f1ff; }
+  section .subnav button.active { background: var(--primary); color: #fff; }
+  .primary { background: var(--primary); border-radius: 6px; font-weight: 600; transition: background .15s; }
+  .primary:hover { background: var(--primary-dk); }
+  label { font-weight: 600; color: #495057; }
+
+  table { background: #fff; }
+  th { background: #e7f1ff; color: #0a3d91; border-bottom: 2px solid #9ec5fe; }
+  tbody tr:hover { background: #f4f8ff; }
+  tr.low { background: #fff3cd; }
+  .msg { border-left: 4px solid; border-radius: 6px; }
+  .err { background: #f8d7da; border-color: var(--danger); color: #842029; }
+  .ok { background: #d1e7dd; border-color: var(--success); color: #0f5132; }
+  .warn { background: #fff3cd; border-color: var(--warning); color: #664d03; }
+  .badge { background: #d1e7dd; color: #0f5132; font-weight: 600; }
+  .badge.warn { background: #fff3cd; color: #664d03; } .badge.err { background: #f8d7da; color: #842029; }
+  .wd i { background: var(--primary); } .wd.spend i { background: var(--success); }
+
+  /* Wide data tables scroll sideways on small screens instead of crushing their columns. */
+  #inventory table, #review table, #aiTable { min-width: 1000px; }
+  th, td, td input, td select, td button, .badge, .legend, .pager, label { font-size: 15px; }
+  #inventory td input, #inventory td select, #review td input, #review td select { padding: 4px 3px; }
+  @media (max-width: 600px) { body > section { padding: 12px; margin: 8px; border-radius: 8px; } .brand { font-size: 1.15rem; } }
+  /* Login modal + logged-out state */
+  .modal { position: fixed; inset: 0; z-index: 100; background: rgba(2, 15, 24, .75); display: flex; align-items: center; justify-content: center; padding: 16px; }
+  .modal.hidden { display: none; }
+  .modal-box { position: relative; background: #fff; border-radius: 14px; padding: 28px 30px; width: 100%; max-width: 360px; box-shadow: 0 16px 40px rgba(0, 0, 0, .5); display: flex; flex-direction: column; gap: 12px; color: #212529; }
+  .modal-box h2 { margin: 0 0 4px; }
+  .modal-box input { width: 100%; box-sizing: border-box; padding: 9px; font-size: 1rem; }
+  .modal-x { position: absolute; top: 8px; right: 12px; background: none !important; border: 0 !important; font-size: 1.6rem; cursor: pointer; color: #6c757d; padding: 0 !important; }
+  .modal-box label.remember { flex-direction: row; align-items: center; gap: 8px; font-weight: 400; font-size: 14px; }
+  .modal-box label.remember input { width: auto; }
+  label.showpw { display: inline-flex; flex-direction: row; align-items: center; gap: 8px; margin: 4px 0 12px; font-weight: 400; font-size: 14px; cursor: pointer; }
+  label.showpw input { width: auto; margin: 0; padding: 0; flex: none; }
+  .cam-stage { position: relative; line-height: 0; border-radius: 8px; overflow: hidden; background: #000; }
+  .cam-stage video { width: 100%; height: auto; display: block; }
+  .cam-frame { position: absolute; border-radius: 6px; box-shadow: 0 0 0 9999px rgba(0, 0, 0, .55); pointer-events: none; }
+  .cam-frame i { position: absolute; width: 26px; height: 26px; border: 0 solid #4ade80; }
+  .cam-frame i:nth-child(1) { top: -2px; left: -2px; border-width: 4px 0 0 4px; border-top-left-radius: 6px; }
+  .cam-frame i:nth-child(2) { top: -2px; right: -2px; border-width: 4px 4px 0 0; border-top-right-radius: 6px; }
+  .cam-frame i:nth-child(3) { bottom: -2px; left: -2px; border-width: 0 0 4px 4px; border-bottom-left-radius: 6px; }
+  .cam-frame i:nth-child(4) { bottom: -2px; right: -2px; border-width: 0 4px 4px 0; border-bottom-right-radius: 6px; }
+  .cam-hint { margin: 8px 0 0; font-size: .85rem; color: #4b5563; }
+  #loginErr { color: #b00020; min-height: 1.2em; font-size: .9rem; }
+  body:not(.authed) #setupMenu, body:not(.authed) #setupMenu + .dd { display: none; }
+  body:not(.authed) .menu:has(#setupMenu) { display: none; }
+  /* Wide data tables: compact type so every column fits without sideways scrolling. */
+  #inventory table, #review table, #aiTable, #inventory th, #inventory td, #inventory td input, #inventory td select, #inventory td button,
+  #review th, #review td, #review td input, #review td select, #review td button, #review td.dup, #aiTable th, #aiTable td { font-size: 13px; }
+  #inventory td input, #inventory td select, #review td input, #review td select { padding: 3px 2px; }
+  /* Footer */
+  footer.site { margin-top: 56px; padding: 8px 0 28px; color: #fff; background: radial-gradient(ellipse 80% 90% at 65% 115%, #4f7fd6 0%, #214a93 38%, rgba(3, 21, 33, 0) 72%), #031521; }
+  footer.site .fwrap { max-width: 1440px; margin: 0 auto; padding: 0 20px; }
+  footer.site hr { border: 0; border-top: 1px solid rgba(255, 255, 255, .85); margin: 28px 0; }
+  .flinks { display: flex; flex-wrap: wrap; gap: 14px 48px; margin: 36px 0; }
+  .flinks a, .fbot a { color: #fff; text-decoration: none; cursor: pointer; font-size: 16px; }
+  .flinks a:hover, .fbot a:hover { text-decoration: underline; }
+  .fmid { display: flex; gap: 40px; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; }
+  .fabout { flex: 1 1 520px; max-width: 960px; }
+  .fmid p { margin: 0; font-size: 16px; line-height: 1.6; color: #eef3fa; }
+  .flogo { display: inline-flex; align-items: center; gap: 16px; color: #fff; text-decoration: none; }
+  .flogo img { height: 64px; width: auto; display: block; }
+  .flogo .fw { display: flex; flex-direction: column; line-height: 1; }
+  .flogo .fw1 { font-size: 2.1rem; font-weight: 800; letter-spacing: .5px; }
+  .flogo .fw2 { font-size: .75rem; font-weight: 600; letter-spacing: 5px; text-transform: uppercase; color: #9fb6c8; margin-top: 7px; }
+  .flogo:hover { text-decoration: none; }
+  .trust { display: flex; gap: 22px; }
+  .seal { width: 64px; height: 64px; border-radius: 50%; background: #fff; color: #0b2a44; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; font-size: 9px; font-weight: 700; line-height: 1.1; padding-top: 2px; }
+  .seal svg { margin-bottom: 1px; }
+  .fbot { display: flex; align-items: center; gap: 52px; flex-wrap: wrap; }
+  .fbot .social { margin-left: auto; display: flex; gap: 22px; align-items: center; }
+  .fbot .social a { color: rgba(255, 255, 255, .65); line-height: 0; }
+  .fbot .social a:hover { color: #fff; text-decoration: none; }
+  @media (max-width: 700px) { .flinks { gap: 12px 28px; } .fbot { gap: 16px 28px; } .fbot .social { margin-left: 0; } }
+  @media print { footer.site, .topbar, .util { display: none !important; } }
+</style>
+</head>
+<body>
+<div id="signupModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Sign up">
+  <form id="signupForm" class="modal-box" autocomplete="off" novalidate>
+    <button type="button" id="signupClose" class="modal-x" aria-label="Close">&times;</button>
+    <h2>Create your account</h2>
+    <div id="signupFields">
+      <label>Family name <input id="suFamily" maxlength="60" required></label>
+      <label>User ID <input id="suUserid" maxlength="30" autocapitalize="none" spellcheck="false" required><small id="suHint" style="font-weight:400;color:#6c757d">Suggested from your family name. You can edit it &mdash; you will use it to log in.</small></label>
+      <label>Password <input id="suPass" type="password" minlength="8" autocomplete="new-password" required></label>
+      <label>Confirm password <input id="suPass2" type="password" minlength="8" autocomplete="new-password" required></label>
+      <label class="remember"><input type="checkbox" id="suShow"> Show passwords</label>
+      <label>Email <input id="suEmail" type="email" maxlength="200" autocomplete="email" required></label>
+      <div id="suErr" style="color:#b00020;min-height:1.2em;font-size:.9rem"></div>
+      <button class="primary" style="width:100%;padding:11px">Sign up</button>
+    </div>
+    <div id="signupDone" class="hidden"></div>
+  </form>
+</div>
+<div id="fbModal"class="modal hidden" role="dialog" aria-modal="true" aria-label="Feedback">
+  <form id="fbForm" class="modal-box">
+    <button type="button" id="fbClose" class="modal-x" aria-label="Close">&times;</button>
+    <h2>Send us feedback</h2>
+    <label>Rating
+      <select id="fbRating">
+        <option value="">— optional —</option>
+        <option value="5">5 – Excellent</option><option value="4">4 – Good</option><option value="3">3 – Okay</option><option value="2">2 – Poor</option><option value="1">1 – Very poor</option>
+      </select>
+    </label>
+    <label>Your feedback <textarea id="fbMsg" rows="5" maxlength="2000" required placeholder="What works well? What could be better?"></textarea></label>
+    <label>Email (optional, if you'd like a reply) <input id="fbEmail" type="email" maxlength="200" autocomplete="email"></label>
+    <div id="fbStatus" style="min-height:1.2em"></div>
+    <button class="primary" style="width:100%;padding:11px">Send feedback</button>
+  </form>
+</div>
+<div id="camModal"class="modal hidden" role="dialog" aria-modal="true" aria-label="Take invoice photo">
+  <div class="modal-box" style="max-width:640px">
+    <button type="button" id="camClose" class="modal-x" aria-label="Close">&times;</button>
+    <h2>Take invoice photo</h2>
+    <div class="cam-stage">
+      <video id="camVideo" autoplay playsinline muted></video>
+      <div id="camFrame" class="cam-frame"><i></i><i></i><i></i><i></i></div>
+    </div>
+    <p class="cam-hint">Lay the invoice flat in good light and fit it inside the corner marks. Only the marked area is captured.</p>
+    <div id="camErr" style="color:#b00020;min-height:1.2em"></div>
+    <button type="button" class="primary" id="camShot" style="width:100%;padding:11px">Capture</button>
+  </div>
+</div>
+<div id="loginModal"class="modal hidden" role="dialog" aria-modal="true" aria-label="Login">
+  <form id="loginForm" class="modal-box" method="post" action="/login" autocomplete="on">
+    <button type="button" id="loginClose" class="modal-x" aria-label="Close">&times;</button>
+    <h2>Login to Smartscan</h2>
+    <label>User ID <input id="loginUser" name="username" autocomplete="username" required></label>
+    <label>Password <input id="loginPass" name="password" type="password" autocomplete="current-password" required></label>
+    <label class="remember"><input type="checkbox" id="loginShow"> Show password</label>
+    <label class="remember"><input type="checkbox" id="loginSave" checked> Save password in this browser</label>
+    <div id="loginErr"></div>
+    <button class="primary" style="width:100%;padding:11px">Login</button>
+  </form>
+</div>
+
+<div class="util"><div class="util-in">
+  <a data-goto="how">&#9432; Support</a>
+  <a data-goto="contact">&#9993; Contact us</a>
+</div></div>
+<header class="topbar">
+  <div class="topbar-in">
+    <a class="brand" data-tab="home" href="#" title="Home"><span class="logo">&#9638;</span><span class="brand-text"><span class="brand-name">Smartscan<span class="dot">.</span></span><span class="tagline">Scan, Track &amp; Shop Smarter</span></span></a>
+    <button id="navToggle" type="button" aria-label="Menu" aria-expanded="false">&#9776;</button>
+    <div class="nav" id="mainNav">
+      <button class="mlink" id="scanLink" type="button" data-tab="scan">Scan new invoice</button>
+      <div class="menu">
+        <button class="mbtn" type="button">Resources <i>&#9662;</i></button>
+        <div class="dd">
+          <button data-goto="how">How it works</button>
+          <button data-goto="tips">Tips for clear scans</button>
+        </div>
+      </div>
+      <button class="mlink" type="button" data-goto="pricing">Pricing</button>
+      <div class="menu">
+        <button class="mbtn" type="button">Company <i>&#9662;</i></button>
+        <div class="dd">
+          <button data-goto="about">About us</button>
+          <button data-goto="contact">Contact us</button>
+        </div>
+      </div>
+      <button class="mlink" id="feedbackLink" type="button">Feedback</button>
+    </div>
+    <div class="menu" id="accountWrap">
+      <button class="mbtn" id="accountMenu" type="button">My Account <i>&#9662;</i></button>
+      <div class="dd dd-right">
+        <div id="accountWho" class="dd-who"></div>
+        <div class="dd-col">
+          <div class="dd-h"><span class="dd-ic">&#9881;</span>Setup</div>
+          <button data-tab="setup">Settings</button>
+          <button data-tab="household">Household</button>
+          <button data-tab="buyers">Members</button>
+          <button data-tab="categories">Item Category</button>
+        </div>
+        <div class="dd-col">
+          <div class="dd-h"><span class="dd-ic">&#9636;</span>Stock Management</div>
+          <button data-tab="inventory">Household Stock</button>
+          <button data-tab="invoices">Invoices Captured</button>
+        </div>
+        <div class="dd-col">
+          <div class="dd-h"><span class="dd-ic">&#9650;</span>Household Stats</div>
+          <button data-tab="consumption">Stock In</button>
+          <button data-tab="orders">Likely Next Orders</button>
+          <button data-tab="aistats">AI Reports</button>
+        </div>
+      </div>
+    </div>
+    <button id="signup" type="button">Signup</button>
+    <button id="logout" type="button">Logout</button>
+  </div>
+</header>
+
+<section id="home">
+  <div class="wrap hero">
+    <div>
+      <h1>Scan invoices. Track stock. Save money<span class="dot">.</span></h1>
+      <p>Snap or upload any grocery invoice and Smartscan reads every line, keeps your household inventory up to date and shows exactly where your spending goes &mdash; so you buy only what you need.</p>
+      <div class="cta">
+        <button class="btn-blue" data-tab="scan">Scan an invoice</button>
+        <button class="btn-line" data-goto="how">See how it works</button>
+      </div>
+      <div class="stores">
+        <a class="store" href="#" data-store="App Store" aria-label="Download on the App Store (iPhone)">
+          <svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true"><path fill="#fff" d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701"/></svg>
+          <span><small>Download on the</small><b>App Store</b></span>
+        </a>
+        <a class="store" href="#" data-store="Google Play" aria-label="Get it on Google Play (Android)">
+          <svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true"><path fill="#00a0ff" d="M3.6 1.9 13.2 12 3.6 22.1c-.4-.3-.6-.8-.6-1.4V3.3c0-.6.2-1.1.6-1.4z"/><path fill="#00e676" d="M3.6 1.9c.4-.3 1-.3 1.5 0l11.5 6.6-3.4 3.5z"/><path fill="#ff3a44" d="M3.6 22.1 13.2 12l3.4 3.5L5.100 22.100c-.5.3-1.100.3-1.500 0z"/><path fill="#ffd400" d="m16.600 8.500 3.800 2.200c.8.500.8 1.700 0 2.200l-3.800 2.200-3.400-3.200z"/></svg>
+          <span><small>GET IT ON</small><b>Google Play</b></span>
+        </a>
+      </div>
+    </div>
+    <img src="hero.svg" alt="An invoice being scanned, its items flowing into inventory, with savings growing">
+  </div>
+
+  <div class="wrap band" id="how">
+    <h2>How it works</h2>
+    <div class="how-grid">
+    <div class="cards steps">
+      <div class="card"><b>1</b><h3>Scan</h3><p>Upload a photo or PDF of your purchase invoice. Claude reads vendor, date, items, rates and taxes in seconds.</p></div>
+      <div class="card"><b>2</b><h3>Review</h3><p>Check the extracted lines, fix anything, and see duplicates matched against stock you already hold.</p></div>
+      <div class="card"><b>3</b><h3>Save &amp; track</h3><p>One click updates inventory and valuation, and feeds usage, overstock and budget reports.</p></div>
+    </div>
+    <figure class="shot">
+      <img src="review-screen.png" alt="The Smartscan review screen: extracted invoice lines with category, usage and a warning that items are already in inventory" loading="lazy">
+      <figcaption>The review step &mdash; every extracted line is editable, and items already in stock are flagged before you save.</figcaption>
+    </figure>
+    </div>
+  </div>
+
+  <div class="wrap band" id="pricing">
+    <h2>Pricing</h2>
+    <div class="cards">
+      <div class="card plan"><h3>Starter</h3><div class="price">Free</div><ul><li>10 invoice scans a month</li><li>Inventory &amp; categories</li><li>1 household</li></ul><button class="btn-line" data-tab="scan">Get started</button></div>
+      <div class="card plan pop"><h3>Family (Recommended)</h3><div class="price">$4 <small>/ month</small></div><ul><li>Unlimited invoice scans</li><li>Usage, overstock &amp; budget reports</li><li>AI stats and order forms</li></ul><button class="btn-blue" data-tab="scan">Choose Family</button></div>
+      <div class="card plan"><h3>Household Plus</h3><div class="price">$9 <small>/ month</small></div><ul><li>Everything in Family</li><li>Multiple households</li><li>Priority support</li></ul><button class="btn-line" data-goto="contact">Contact us</button></div>
+    </div>
+  </div>
+
+  <div class="wrap band" id="tips">
+    <h2>Tips for clear scans</h2>
+    <div class="card"><ul class="tips-list">
+      <li>Lay the invoice flat in good light; avoid shadows and glare.</li>
+      <li>Capture the whole page, including the totals and tax lines.</li>
+      <li>PDFs from online stores give the most accurate results.</li>
+      <li>Always review the lines before saving &mdash; you stay in control.</li>
+    </ul></div>
+  </div>
+
+  <div class="wrap band two" id="about">
+    <div class="card"><a class="flogo" href="/about.html" aria-label="Smear Technologies" style="margin-bottom:10px"><img src="logo-mark.png" alt=""><span class="fw"><span class="fw1">Smear</span><span class="fw2">Technologies</span></span></a><h3>About us</h3>
+      <p><strong>Smear Technologies</strong> is a newly launched technology company. In 2026 we introduced our flagship product, <strong>Smartscan</strong>, a household grocery and inventory tracker. It turns paper and PDF invoices into clean data, so families waste less, restock on time and stay within budget.</p>
+      <p>This is only the beginning. In 2027 we plan to launch a series of new products, starting with <strong>Smartvids</strong>, a video capture technology built on purpose-designed hardware devices.</p>
+      <a class="btn-line" href="/about.html" style="display:inline-block;margin-top:10px;padding:9px 22px;border-radius:999px;font-weight:700;text-decoration:none">Read more</a>
+    </div>
+    <div class="card" id="contact"><h3>Contact us</h3><p>Questions or need help getting started? Reach out to your Smartscan account manager and we'll be glad to help.</p></div>
+  </div>
+</section>
+
+<section id="setup" class="hidden">
+  <h2>Setup</h2>
+  <div class="row">
+    <label>Language <select id="setLang"></select></label>
+    <label>Currency <select id="setCur"></select></label>
+  </div>
+  <div class="row">
+    <label>Unit Rate in Scan new invoice
+      <select id="setTax">
+        <option value="0">Excludes tax % (tax is calculated separately and added to the item total)</option>
+        <option value="1">Includes tax % (item total = qty × unit rate)</option>
+      </select>
+    </label>
+  </div>
+  <div id="setMsg"></div>
+  <button class="primary" id="setSave">Save settings</button>
+
+  <h3 style="margin-top:28px">Change password</h3>
+  <form id="pwForm" autocomplete="off">
+    <div class="row">
+      <label>Current password <input id="pwCur" type="password" autocomplete="current-password" required></label>
+      <label>New password <input id="pwNew" type="password" autocomplete="new-password" minlength="8" required></label>
+      <label>Confirm new password <input id="pwNew2" type="password" autocomplete="new-password" minlength="8" required></label>
+    </div>
+    <label class="showpw"><input type="checkbox" id="pwShow"> Show passwords</label>
+    <div id="pwMsg"></div>
+    <button class="primary">Change password</button>
+  </form>
+</section>
+
+<section id="household" class="hidden">
+  <h2>Household setup</h2>
+  <div class="row">
+    <label>Unique ID (your User ID) <input id="hhCode" readonly style="background:#f1f3f5"></label>
+    <label>Family name <input id="hhName" maxlength="60"></label>
+  </div>
+  <div class="row">
+    <label>No. of persons <input id="hhPersons" type="number" min="0"></label>
+    <label>Children <input id="hhChildren" type="number" min="0"></label>
+    <label>Adults <input id="hhAdults" type="number" min="0"></label>
+    <label>Males <input id="hhMales" type="number" min="0"></label>
+    <label>Females <input id="hhFemales" type="number" min="0"></label>
+  </div>
+  <h3>Persons by age group</h3>
+  <div class="row" id="hhAges"></div>
+  <div id="hhMsg"></div>
+  <button class="primary" id="hhSave">Save household</button>
+</section>
+
+<section id="buyers" class="hidden">
+  <h2>Persons buying items in the household</h2>
+  <div id="buyMsg"></div>
+  <div class="row">
+    <label>Unique ID <input id="buyCode"></label>
+    <label>Name <input id="buyName"></label>
+    <button class="primary" id="buyAdd">Add buyer</button>
+    <span id="buyMax"></span>
+  </div>
+  <table>
+    <thead><tr><th>Unique ID</th><th>Name</th><th></th></tr></thead>
+    <tbody id="buyRows"></tbody>
+  </table>
+</section>
+
+<section id="categories" class="hidden">
+  <h2>Inventory categories</h2>
+  <div id="catMsg"></div>
+  <div class="row">
+    <label>Unique ID <input id="catCode"></label>
+    <label>Name <input id="catName" placeholder="e.g. Veggies"></label>
+    <label>Description <input id="catDesc"></label>
+    <label>Monthly budget % <input id="catPct" type="number" step="any" min="0" max="100" value="0"></label>
+    <button class="primary" id="catAdd">Add category</button>
+  </div>
+  <p id="catTotal"></p>
+  <table>
+    <thead><tr><th>Unique ID</th><th>Name</th><th>Description</th><th>Budget %</th><th>Items</th><th></th></tr></thead>
+    <tbody id="catRows"></tbody>
+  </table>
+</section>
+
+<section id="scan" class="hidden">
+  <div class="row">
+    <input type="file" id="file" accept="image/*,application/pdf">
+    <input type="file" id="snapInput" accept="image/*" capture="environment" hidden>
+    <button id="snapBtn" type="button">&#128247; Take photo</button>
+    <button class="primary" id="scanBtn">Scan</button>
+    <button id="manualBtn">Enter manually</button>
+  </div>
+  <div id="scanMsg"></div>
+  <div id="review" class="hidden">
+    <div class="row">
+      <label>Buyer member <select id="buyer"></select></label>
+      <label>Purchased <select id="channel"><option value="offline">Offline (in store)</option><option value="online">Online</option></select></label>
+      <label id="providerLbl" class="hidden">Supplier / service provider <input id="provider" placeholder="e.g. Amazon, Blinkit"></label>
+      <label>Vendor <input id="vendor"></label>
+      <label>Date <input id="date" type="date"></label>
+      <label>Printed total <input id="printed" type="number" step="0.01"></label>
+    </div>
+    <table>
+      <thead><tr><th>Description</th><th>Category</th><th>Used by</th><th>Stock In</th><th style="text-align:right">Qty</th><th>UOM</th><th style="text-align:right">MRP Rate</th><th style="text-align:right">Unit Rate</th><th style="text-align:right">Disc %</th><th style="text-align:right">Tax %</th><th style="text-align:right">Amount</th><th>Exist in Inventory?</th><th></th></tr></thead>
+      <tbody id="lines"></tbody>
+    </table>
+    <div class="row">
+      <button id="addLine">+ Add line</button>
+      <label>Invoice discount (lumpsum) <input id="invDiscount" type="number" step="0.01" min="0"></label>
+      <span>Item discounts: <span id="itemDisc">0.00</span></span>
+      <strong>Total discount: <span id="totDisc">0.00</span></strong>
+      <label>Invoice tax (lumpsum) <input id="invTax" type="number" step="0.01" min="0"></label>
+      <span>Items subtotal: <span id="subtotal">0.00</span></span>
+      <strong>Computed invoice value: <span id="total">0.00</span></strong>
+    </div>
+    <div id="mismatch"></div>
+    <button class="primary" id="save">Save &amp; update inventory</button>
+  </div>
+</section>
+
+<section id="inventory" class="hidden">
+  <div id="lowBanner"></div>
+  <p>Estimated stock value: <strong id="invValue">0.00</strong></p>
+  <div id="invChart"></div>
+  <p><input id="invSearch" type="search" placeholder="🔍 Search items (name or category)…" autocomplete="off" style="width:100%;max-width:360px"> <span id="invSearchCount"></span></p>
+  <table>
+    <thead><tr><th>Item</th><th>Category</th><th>Used by</th><th>Stock In</th><th class="num">Qty</th><th>UOM</th><th class="num">Used qty</th><th class="num">Balance</th><th class="num">Avg rate</th><th class="num">Value</th><th class="num">% of total</th><th>Action</th></tr></thead>
+    <tbody id="invRows"></tbody>
+  </table>
+  <div id="invPager" class="pager"></div>
+</section>
+
+<section id="invoices" class="hidden">
+  <p><input id="invoiceSearch" type="search" placeholder="🔍 Search invoices by item, category or vendor…" autocomplete="off" style="width:100%;max-width:360px"> <span id="invoiceSearchCount"></span></p>
+  <table>
+    <thead><tr><th>#</th><th>Buyer</th><th>Purchased</th><th>Vendor</th><th>Date</th><th>Printed</th><th>Computed</th></tr></thead>
+    <tbody id="invList"></tbody>
+  </table>
+  <div id="invListPager" class="pager"></div>
+</section>
+
+<section id="consumption" class="hidden">
+  <h2>Stock In</h2>
+  <div class="subnav">
+    <button data-stat="composition" class="active">1. Item composition % (monthly)</button>
+    <button data-stat="overstock">2. Overstocked items</button>
+    <button data-stat="uncategorized">3. Pattern Buying</button>
+    <button data-stat="channels">4. Online / offline &amp; discounts</button>
+  </div>
+  <div id="stat-composition" class="statpane">
+    <h3>Aggregate item composition percentage in a month</h3>
+    <div class="row no-print">
+      <label>Month <input type="month" id="compMonth"></label>
+      <button class="primary" id="compPdf">Download PDF</button>
+    </div>
+    <div id="compReport">
+      <p id="compPeriod"></p>
+      <div class="comp">
+        <table>
+          <thead><tr><th>Item</th><th>Category</th><th>Unit</th><th class="num">Qty</th><th class="num">Value</th><th class="num">%</th></tr></thead>
+          <tbody id="compRows"></tbody>
+          <tfoot id="compFoot"></tfoot>
+        </table>
+        <div id="compChart"></div>
+      </div>
+    </div>
+  </div>
+  <div id="stat-overstock" class="statpane hidden">
+    <h3>Overstocked items report</h3>
+    <p>Items bought during the month but not used in that month.</p>
+    <div class="row no-print">
+      <label>Month <input type="month" id="ovMonth"></label>
+      <button class="primary" id="ovPdf">Download PDF</button>
+    </div>
+    <div>
+      <p id="ovPeriod"></p>
+      <div class="comp">
+        <table>
+          <thead><tr><th>Item</th><th>Category</th><th>Unit</th><th class="num">Total qty</th><th class="num">Used qty</th><th class="num">Balance qty</th></tr></thead>
+          <tbody id="ovRows"></tbody>
+          <tfoot id="ovFoot"></tfoot>
+        </table>
+        <div id="ovChart"></div>
+      </div>
+    </div>
+  </div>
+  <div id="stat-uncategorized" class="statpane hidden">
+    <h3>Pattern buying of items</h3>
+    <p>How the month's purchases are split by consumption pattern (daily, frequently, weekly, ...), by share of value.</p>
+    <div class="row no-print">
+      <label>Month <input type="month" id="patMonth"></label>
+    </div>
+    <p id="patPeriod"></p>
+    <div class="comp">
+      <table>
+        <thead><tr><th>Stock In pattern</th><th>Items</th><th class="num">Value</th><th class="num">%</th></tr></thead>
+        <tbody id="patRows"></tbody>
+        <tfoot id="patFoot"></tfoot>
+      </table>
+      <div id="patChart"></div>
+    </div>
+  </div>
+  <div id="stat-channels" class="statpane hidden">
+    <h3>Online / offline purchases by vendor, with discounts</h3>
+    <p>Purchases in the month per vendor (the platform for online orders), each vendor's share of spend, and the effective discount offered: item discounts (MRP above the rate paid) plus invoice discounts, as a % of the value before discounts.</p>
+    <div class="row no-print">
+      <label>Month <input type="month" id="chMonth"></label>
+      <button class="primary" id="chPdf">Download PDF</button>
+    </div>
+    <p id="chPeriod"></p>
+    <div class="comp">
+      <div>
+        <table>
+          <thead><tr><th>Channel</th><th class="num">Purchases</th><th class="num">Spend</th><th class="num">Share %</th><th class="num">Discount</th><th class="num">Effective discount %</th></tr></thead>
+          <tbody id="chChannels"></tbody>
+        </table>
+        <table>
+          <thead><tr><th>Vendor</th><th>Channel</th><th class="num">Purchases</th><th class="num">Spend</th><th class="num">Vendor share %</th><th class="num">Discount</th><th class="num">Effective discount %</th></tr></thead>
+          <tbody id="chRows"></tbody>
+          <tfoot id="chFoot"></tfoot>
+        </table>
+      </div>
+      <div id="chChart"></div>
+    </div>
+  </div>
+</section>
+
+<section id="aistats" class="hidden">
+  <h2>AI Stats</h2>
+  <div class="subnav">
+    <button data-ai="daily" class="active">1. Daily Stock In pattern</button>
+    <button data-ai="frequently">2. Frequent Stock In pattern</button>
+    <button data-ai="monthly">3. Monthly Stock In pattern</button>
+  </div>
+  <p id="aiIntro"></p>
+  <div class="row">
+    <label>Look back <select id="aiDays"><option value="30">30 days</option><option value="60">60 days</option><option value="90" selected>90 days</option><option value="180">6 months</option><option value="365">12 months</option></select></label>
+  </div>
+  <p id="aiPeriod"></p>
+  <div id="aiInsights"></div>
+  <div id="aiShare"></div>
+  <table id="aiTable">
+    <thead><tr><th>Item</th><th>Category</th><th>Type</th><th class="num">Bought</th><th class="num">Buys</th><th class="num">Avg days between buys</th><th class="num">Used</th><th class="num">Use / day</th><th class="num">Balance</th><th class="num">Days left</th><th class="num">Spend</th><th class="num">%</th><th>Status</th></tr></thead>
+    <tbody id="aiRows"></tbody>
+  </table>
+  <div id="aiWeekday"></div>
+</section>
+
+<section id="orders" class="hidden">
+  <h2>Order Forms</h2>
+  <div class="subnav">
+    <button data-order="nextmonth" class="active">1. Probable next monthly order form</button>
+  </div>
+  <div id="order-nextmonth" class="orderpane">
+    <h3>Probable next monthly order form</h3>
+    <p>Stock on hand is items purchased to date less items consumed to date. Items with no stock left are marked <strong>Restock</strong>. The quantity to order covers a month's expected need, taken from logged consumption; where no consumption is entered, from the average monthly stock-in of previous months. Use this form in the third week of the month for the next month's order.</p>
+    <p><label>Select month <select id="orderMonth"></select></label></p>
+    <p id="orderPeriod"></p>
+    <table>
+      <thead><tr><th>Item</th><th>Category</th><th>Based on</th><th class="num">Purchased</th><th class="num">Consumed</th><th class="num">Balance</th><th class="num">Monthly need</th><th class="num">Order qty</th><th>UOM</th><th class="num">Est. cost</th><th>Status</th></tr></thead>
+      <tbody id="orderRows"></tbody>
+    </table>
+  </div>
+</section>
+
+<footer class="site">
+  <div class="fwrap">
+    <hr>
+    <a class="brand" data-tab="home" href="#" title="Home"><span class="logo">&#9638;</span><span class="brand-text"><span class="brand-name">Smartscan<span class="dot">.</span></span><span class="tagline">Scan, Track &amp; Shop Smarter</span></span></a>
+    <nav class="flinks" aria-label="Footer">
+      <a data-goto="about">About</a>
+      <a data-goto="how">How it works</a>
+      <a data-goto="pricing">Pricing</a>
+      <a data-goto="tips">Scanning tips</a>
+      <a data-goto="how">Support</a>
+      <a data-goto="contact">Contact Us</a>
+    </nav>
+    <div class="fmid">
+      <div class="fabout">
+        <p>Smartscan turns everyday grocery invoices into a clear picture of your household. Scan a bill with your phone or upload a PDF, review the items, and Smartscan keeps your inventory, usage and spending up to date &mdash; so you restock on time, waste less and stay within budget. Built for families who want to know exactly what they have, what they use and what they spend.</p>
+      </div>
+      <div class="trust">
+        <div class="seal"><svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path d="M12 2 4 5v6c0 5 3.400 9.300 8 11 4.600-1.700 8-6 8-11V5z" fill="none" stroke="#0b2a44" stroke-width="1.800" stroke-linejoin="round"/><path d="m8.500 12 2.500 2.500 4.500-5" fill="none" stroke="#0b2a44" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Secure<br>login</span></div>
+        <div class="seal"><svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><rect x="5" y="10.500" width="14" height="10" rx="2" fill="none" stroke="#0b2a44" stroke-width="1.800"/><path d="M8 10.500V8a4 4 0 0 1 8 0v2.500" fill="none" stroke="#0b2a44" stroke-width="1.800"/></svg><span>Private<br>data</span></div>
+      </div>
+    </div>
+    <hr>
+    <div class="fbot">
+      <span>Copyright &copy;<span id="yr"></span> Smartscan</span>
+      <a href="#" data-soon="Terms and Conditions">Terms and Conditions</a>
+      <a href="#" data-soon="Privacy Policy">Privacy Policy</a>
+      <div class="social">
+        <a href="#" data-soon="LinkedIn page" aria-label="LinkedIn"><svg viewBox="0 0 24 24" width="28" height="28"><path fill="currentColor" d="M4.500 3A2 2 0 1 0 4.500 7 2 2 0 0 0 4.500 3zM3 9h3v12H3zm6 0h2.900v1.700h.1c.4-.8 1.400-1.900 3.100-1.900 3.300 0 3.900 2.200 3.900 5V21h-3v-6c0-1.500 0-3.300-2-3.300s-2.300 1.500-2.300 3.200V21H9z"/></svg></a>
+        <a href="#" data-soon="X page" aria-label="X"><svg viewBox="0 0 24 24" width="26" height="26"><path fill="currentColor" d="M17.800 3h3.100l-6.800 7.700L22 21h-6.200l-4.900-6.400L5.300 21H2.200l7.300-8.300L2 3h6.400l4.400 5.800zm-1.100 16.200h1.700L7.400 4.700H5.600z"/></svg></a>
+        <a href="#" data-soon="YouTube channel" aria-label="YouTube"><svg viewBox="0 0 24 24" width="30" height="30"><path fill="currentColor" d="M21.600 7.200a2.500 2.500 0 0 0-1.800-1.800C18.200 5 12 5 12 5s-6.200 0-7.800.4A2.500 2.500 0 0 0 2.400 7.200C2 8.800 2 12 2 12s0 3.200.4 4.800a2.500 2.500 0 0 0 1.800 1.800C5.800 19 12 19 12 19s6.200 0 7.800-.4a2.500 2.500 0 0 0 1.800-1.800c.4-1.600.4-4.800.4-4.800s0-3.200-.4-4.800zM10 15V9l5.200 3z"/></svg></a>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>

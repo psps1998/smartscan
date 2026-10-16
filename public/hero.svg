@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 500" role="img" aria-label="An invoice being scanned, its items flowing into inventory, with savings growing">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#14456e"/><stop offset="1" stop-color="#1b2a6b"/></linearGradient>
+    <radialGradient id="glow" cx=".3" cy=".4" r=".7"><stop offset="0" stop-color="#2dd4bf" stop-opacity=".35"/><stop offset="1" stop-color="#2dd4bf" stop-opacity="0"/></radialGradient>
+    <linearGradient id="beam" x1="0" x2="1"><stop offset="0" stop-color="#2dd4bf" stop-opacity="0"/><stop offset=".5" stop-color="#5eead4"/><stop offset="1" stop-color="#2dd4bf" stop-opacity="0"/></linearGradient>
+    <linearGradient id="beamGlow" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2dd4bf" stop-opacity="0"/><stop offset="1" stop-color="#2dd4bf" stop-opacity=".45"/></linearGradient>
+    <clipPath id="paper"><path d="M80 60h240v350l-20 -12-20 12-20 -12-20 12-20 -12-20 12-20 -12-20 12-20 -12-20 12-20 -12-20 12z"/></clipPath>
+  </defs>
+  <rect width="640" height="500" fill="url(#bg)"/>
+  <rect width="640" height="500" fill="url(#glow)"/>
+
+  <!-- receipt -->
+  <path d="M80 60h240v350l-20 -12-20 12-20 -12-20 12-20 -12-20 12-20 -12-20 12-20 -12-20 12-20 -12-20 12-20 -12-20 12z" fill="#f8fafc"/>
+  <g clip-path="url(#paper)">
+    <text x="200" y="98" text-anchor="middle" font-family="system-ui,Arial,sans-serif" font-size="17" font-weight="700" fill="#0f172a">FRESH MART</text>
+    <rect x="130" y="108" width="140" height="4" rx="2" fill="#cbd5e1"/>
+    <g fill="#94a3b8">
+      <rect x="100" y="140" width="110" height="9" rx="4"/><rect x="262" y="140" width="38" height="9" rx="4"/>
+      <rect x="100" y="172" width="86" height="9" rx="4"/><rect x="270" y="172" width="30" height="9" rx="4"/>
+      <rect x="100" y="204" width="124" height="9" rx="4"/><rect x="258" y="204" width="42" height="9" rx="4"/>
+      <rect x="100" y="236" width="96" height="9" rx="4"/><rect x="268" y="236" width="32" height="9" rx="4"/>
+      <rect x="100" y="268" width="116" height="9" rx="4"/><rect x="260" y="268" width="40" height="9" rx="4"/>
+      <rect x="100" y="300" width="80" height="9" rx="4"/><rect x="272" y="300" width="28" height="9" rx="4"/>
+      <rect x="100" y="332" width="104" height="9" rx="4"/><rect x="264" y="332" width="36" height="9" rx="4"/>
+    </g>
+    <rect x="100" y="356" width="200" height="2" fill="#cbd5e1"/>
+    <rect x="100" y="372" width="60" height="12" rx="4" fill="#0f172a"/><rect x="246" y="372" width="54" height="12" rx="4" fill="#0f172a"/>
+    <!-- scanned rows highlight -->
+    <rect x="92" y="130" width="216" height="130" fill="#2dd4bf" opacity=".16"/>
+    <g fill="#16a34a"><circle cx="86" cy="145" r="0"/></g>
+  </g>
+
+  <!-- animated scan beam -->
+  <g>
+    <rect x="62" y="40" width="276" height="50" fill="url(#beamGlow)"><animate attributeName="y" values="60;330;60" dur="4s" repeatCount="indefinite"/></rect>
+    <rect x="62" y="88" width="276" height="4" rx="2" fill="url(#beam)"><animate attributeName="y" values="108;378;108" dur="4s" repeatCount="indefinite"/></rect>
+  </g>
+
+  <!-- viewfinder corners -->
+  <g fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" opacity=".9">
+    <path d="M56 90V48h42"/><path d="M344 90V48h-42"/>
+    <path d="M56 380v42h42"/><path d="M344 380v42h-42"/>
+  </g>
+
+  <!-- flow arrow -->
+  <path d="M348 240C372 240 372 190 398 190" fill="none" stroke="#5eead4" stroke-width="3" stroke-dasharray="6 7" stroke-linecap="round"/>
+  <path d="M390 181l12 9-12 9" fill="none" stroke="#5eead4" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- inventory card -->
+  <g>
+    <rect x="404" y="70" width="206" height="200" rx="14" fill="#0b2239" stroke="#2b5d8a"/>
+    <text x="422" y="100" font-family="system-ui,Arial,sans-serif" font-size="15" font-weight="700" fill="#fff">Inventory updated</text>
+    <g font-family="system-ui,Arial,sans-serif" font-size="12" fill="#cbd5e1">
+      <circle cx="428" cy="130" r="6" fill="#22c55e"/><text x="442" y="134">Rice</text><rect x="500" y="125" width="92" height="10" rx="5" fill="#16405f"/><rect x="500" y="125" width="70" height="10" rx="5" fill="#22c55e"/>
+      <circle cx="428" cy="160" r="6" fill="#22c55e"/><text x="442" y="164">Milk</text><rect x="500" y="155" width="92" height="10" rx="5" fill="#16405f"/><rect x="500" y="155" width="52" height="10" rx="5" fill="#22c55e"/>
+      <circle cx="428" cy="190" r="6" fill="#f59e0b"/><text x="442" y="194">Oil</text><rect x="500" y="185" width="92" height="10" rx="5" fill="#16405f"/><rect x="500" y="185" width="26" height="10" rx="5" fill="#f59e0b"/>
+      <circle cx="428" cy="220" r="6" fill="#22c55e"/><text x="442" y="224">Flour</text><rect x="500" y="215" width="92" height="10" rx="5" fill="#16405f"/><rect x="500" y="215" width="80" height="10" rx="5" fill="#22c55e"/>
+    </g>
+    <path d="M580 87l5 5 9-10" fill="none" stroke="#22c55e" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- savings card -->
+  <g>
+    <rect x="404" y="294" width="206" height="150" rx="14" fill="#fff"/>
+    <text x="422" y="322" font-family="system-ui,Arial,sans-serif" font-size="13" fill="#64748b">Monthly spend</text>
+    <text x="422" y="352" font-family="system-ui,Arial,sans-serif" font-size="26" font-weight="700" fill="#0f172a">&#8595; 18% saved</text>
+    <g>
+      <rect x="426" y="392" width="22" height="34" rx="4" fill="#bfdbfe"/>
+      <rect x="456" y="384" width="22" height="42" rx="4" fill="#93c5fd"/>
+      <rect x="486" y="374" width="22" height="52" rx="4" fill="#60a5fa"/>
+      <rect x="516" y="366" width="22" height="60" rx="4" fill="#3b82f6"/>
+      <rect x="546" y="378" width="22" height="48" rx="4" fill="#16a34a"/>
+    </g>
+  </g>
+
+  <!-- coin -->
+  <g transform="translate(90 450)">
+    <circle r="26" fill="#fbbf24"/><circle r="19" fill="none" stroke="#f59e0b" stroke-width="3"/>
+    <text y="8" text-anchor="middle" font-family="system-ui,Arial,sans-serif" font-size="22" font-weight="700" fill="#b45309">$</text>
+  </g>
+</svg>
