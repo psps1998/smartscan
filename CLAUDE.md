@@ -7,6 +7,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `npm install` then `npm start` runs `node --env-file-if-exists=.env server.js` and serves on `PORT` (default 3000).
 - There is no build, lint, or test tooling. The app needs Node 22+ for built-in `node:sqlite` and `--env-file-if-exists`.
 - Quick health check: `curl localhost:3000/session` returns `{"loggedIn":false}`.
+- This workspace is an EC2 remote instance, and the checkout at `/opt/smartscan` is the live deployment. `localhost:3000` is served from this directory by the systemd unit, so code changes only take effect after a restart.
+- The deployed site is https://smartscan.in (admin at `/admin`). Caddy (`/etc/caddy/Caddyfile`) listens on 80/443 and proxies to the app on port 3000. The instance's public IP is `3.6.206.107` (ap-south-1). To view the app from a laptop while connected remotely, forward port 3000 (VS Code Ports panel or `ssh -L 3000:localhost:3000 <host>`).
+- Edits are live, with no separate deploy step: localhost:3000 and smartscan.in are the same process. Changes in `public/` show up immediately (hard-refresh the browser). Changes to `server.js`, `admin/routes.js`, `.env`, or `npm install` need `sudo systemctl restart smartscan`, because the unit runs plain `node server.js` with no watch mode. A syntax error followed by a restart takes the live site down. To test first, run `PORT=3001 node --env-file-if-exists=.env server.js`, and note that this uses the production `data/inventory.db` unless pointed at a copy. Check `sudo journalctl -u smartscan -n 30` after restarting.
 - Production runs as the systemd unit `smartscan` (`sudo systemctl restart smartscan`, logs via `sudo journalctl -u smartscan -n 30`). [DEPLOY.md](DEPLOY.md) is a beginner AWS guide covering EC2, HTTPS, and nightly `sqlite3 .backup` to S3. It warns never to overwrite the server's `data/` folder when deploying.
 
 ### Environment (`.env`, see `.env.example`)
