@@ -90,10 +90,42 @@ const DEFAULT_CATEGORIES = [
   ['Personal Care', 'Bath soap, shampoo, conditioner, toothpaste, toothbrush, deodorant, lotion, razors, tissue, toilet tissue, sunscreen, makeup'],
   ['Misc. Items', 'Batteries, charcoal, greeting cards, light bulbs'],
 ];
-const seedCategories = (uid) => {
-  const ins = db.prepare('INSERT INTO categories (owner, code, name, description, budget_pct) VALUES (?,?,?,?,0)');
-  DEFAULT_CATEGORIES.forEach(([name, description], i) => ins.run(uid, `C-${String(i + 1).padStart(3, '0')}`, name, description));
+// Country-level category sets: the first signup from a country creates its set (COUNTRY_CATEGORIES[cc] if defined, else DEFAULT_CATEGORIES);
+// every later account from that country gets the same list. Accounts then edit their own copy and budget shares.
+db.exec(`CREATE TABLE IF NOT EXISTS country_categories (
+  country TEXT NOT NULL, code TEXT NOT NULL, name TEXT NOT NULL, description TEXT DEFAULT '', PRIMARY KEY (country, code))`);
+const COUNTRY_CATEGORIES = {}; // e.g. { IN: [[name, description], ...] } to localise a country's starter list
+const countryCategories = (cc) => {
+  if (!db.prepare('SELECT 1 FROM country_categories WHERE country = ?').get(cc)) {
+    const ins = db.prepare('INSERT INTO country_categories (country, code, name, description) VALUES (?,?,?,?)');
+    (COUNTRY_CATEGORIES[cc] || DEFAULT_CATEGORIES).forEach(([name, description], i) => ins.run(cc, `C-${String(i + 1).padStart(3, '0')}`, name, description));
+  }
+  return db.prepare('SELECT code, name, description FROM country_categories WHERE country = ? ORDER BY code').all(cc);
 };
+const seedCategories = (uid, cc) => {
+  const ins = db.prepare('INSERT INTO categories (owner, code, name, description, budget_pct) VALUES (?,?,?,?,0)');
+  for (const c of countryCategories(cc)) ins.run(uid, c.code, c.name, c.description);
+};
+// Default language and currency by country (limited to LANGUAGES / CURRENCIES); anything unlisted gets English + USD.
+const EUR = 'AT BE CY EE FI GR HR IE IT LT LU LV MT NL PT SI SK'.split(' ');
+const COUNTRY_DEFAULTS = {
+  IN: ['en', 'INR'], US: ['en', 'USD'], GB: ['en', 'GBP'], AU: ['en', 'AUD'], CA: ['en', 'CAD'], SG: ['en', 'SGD'], JP: ['en', 'JPY'],
+  DE: ['de', 'EUR'], AT: ['de', 'EUR'], FR: ['fr', 'EUR'], ES: ['es', 'EUR'], MX: ['es', 'USD'], AR: ['es', 'USD'],
+  ...Object.fromEntries(EUR.filter((c) => !['AT'].includes(c)).map((c) => [c, ['en', 'EUR']])),
+};
+const countryDefaults = (cc) => COUNTRY_DEFAULTS[cc] || ['en', 'USD'];
+// Country from the caller's IP (ipwho.is, 2 s timeout); falls back to the browser's language region, then India.
+async function detectCountry(req) {
+  const ip = String(req.ip || '').replace(/^::ffff:/, '');
+  if (ip && !/^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|::1$|f[cd])/i.test(ip)) {
+    try {
+      const j = await (await fetch(`https://ipwho.is/${encodeURIComponent(ip)}?fields=success,country_code`, { signal: AbortSignal.timeout(2000) })).json();
+      if (j.success && /^[A-Z]{2}$/.test(j.country_code)) return j.country_code;
+    } catch {}
+  }
+  const region = /[a-z]{2,3}-([A-Za-z]{2})\b/.exec(req.headers['accept-language'] || '')?.[1];
+  return region ? region.toUpperCase() : 'IN';
+}
 const USED_BY = ['everyone', 'male', 'female', 'children'];
 const usedBy = (v) => USED_BY.includes(norm(v)) ? norm(v) : 'everyone';
 const CONSUMPTION_TYPES = ['daily', 'frequently', 'weekly', 'fortnightly', 'monthly', 'quarterly', 'occasional'];
@@ -109,6 +141,7 @@ for (const sql of [
 ]) { try { db.exec(sql); } catch {} }
 
 const app = express();
+app.set('trust proxy', 'loopback'); // behind Caddy: req.ip is the real client IP from X-Forwarded-For
 app.use(express.json());
 
 // --- Accounts: every household is a row in `users` (User ID, family name, email, password). Login = User ID + password; signed session cookie. ---
@@ -251,43 +284,29 @@ app.post('/feedback', (req, res) => {
 mountAdmin(app, db); // /admin: database management dashboard (own login, see admin/routes.js)
 // Public signup. The account is active straight away. Email activation is a planned later step: create it as 'pending' there and activate it from the emailed link.
 const signupHits = new Map(); // ip -> [timestamps]
-// User ID = family name (letters/digits, lowercase) + "-" + next free 3-digit number, e.g. "sharma-001". Editable by the user, always unique.
-const USERID_RE = /^[a-z0-9][a-z0-9._-]{2,29}$/;
-const RESERVED_IDS = ['admin', 'administrator', 'root', 'support', 'smartscan', 'testscan'];
-const useridTaken = (id) => RESERVED_IDS.includes(id.toLowerCase()) || !!db.prepare('SELECT 1 FROM users WHERE userid = ? COLLATE NOCASE').get(id);
-function suggestUserid(family) {
-  const base = String(family || '').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 20) || 'family';
-  const used = db.prepare('SELECT userid FROM users WHERE userid LIKE ?').all(`${base}-%`)
-    .map((r) => /^-(\d+)$/.exec(r.userid.slice(base.length))?.[1]).filter(Boolean).map(Number);
-  let n = Math.max(0, ...used) + 1, id;
-  do id = `${base}-${String(n++).padStart(3, '0')}`; while (useridTaken(id));
-  return id;
-}
-app.get('/signup/userid', (req, res) => res.json({ userid: suggestUserid(req.query.family) }));
-app.get('/signup/check', (req, res) => {
-  const id = String(req.query.userid || '').trim().toLowerCase();
-  res.json({ valid: USERID_RE.test(id), available: USERID_RE.test(id) && !useridTaken(id) });
-});
-app.post('/signup', (req, res) => {
+// The User ID is the account's email address (lowercased). Email activation is still to come.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+app.post('/signup', async (req, res) => {
   const now = Date.now(), hits = (signupHits.get(req.ip) || []).filter((t) => now - t < 3600000);
   if (hits.length >= 5) return res.status(429).json({ error: 'Too many signups from this address. Please try again later.' });
-  const b = req.body || {}, family = String(b.family_name || '').trim(), email = String(b.email || '').trim(), userid = String(b.userid || '').trim().toLowerCase();
+  const b = req.body || {}, family = String(b.family_name || '').trim(), email = String(b.email || '').trim().toLowerCase();
   if (family.length < 2 || family.length > 60) return res.status(400).json({ error: 'Enter your family name (2-60 characters).' });
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 200) return res.status(400).json({ error: 'Enter a valid email address.' });
+  if (!EMAIL_RE.test(email) || email.length > 200) return res.status(400).json({ error: 'Enter a valid email address.' });
   if (typeof b.password !== 'string' || b.password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters.' });
   if (b.password !== b.confirm) return res.status(400).json({ error: 'Passwords do not match.' });
-  if (!USERID_RE.test(userid)) return res.status(400).json({ error: 'User ID must be 3-30 characters: lowercase letters, digits, dot, dash or underscore.' });
-  if (useridTaken(userid)) return res.status(409).json({ error: 'That User ID is already taken. Try another.', userid: suggestUserid(family) });
-  if (db.prepare('SELECT 1 FROM users WHERE email = ?').get(email)) return res.status(409).json({ error: 'An account with this email already exists.' });
+  if (db.prepare('SELECT 1 FROM users WHERE userid = ? COLLATE NOCASE OR email = ?').get(email, email)) return res.status(409).json({ error: 'An account with this email already exists.' });
+  const country = await detectCountry(req), [language, currency] = countryDefaults(country);
   db.exec('BEGIN');
   try {
     db.prepare("INSERT INTO users (userid, family_name, email, password_hash, status, activation_token, activated_at) VALUES (?, ?, ?, ?, 'active', ?, CURRENT_TIMESTAMP)")
-      .run(userid, family, email, hashPassword(b.password), randomBytes(24).toString('base64url'));
-    seedCategories(userid);
+      .run(email, family, email, hashPassword(b.password), randomBytes(24).toString('base64url'));
+    const put = db.prepare('INSERT INTO user_settings (owner, key, value) VALUES (?,?,?)');
+    put.run(email, 'country', country); put.run(email, 'language', language); put.run(email, 'currency', currency);
+    seedCategories(email, country);
     db.exec('COMMIT');
   } catch (e) { db.exec('ROLLBACK'); return res.status(500).json({ error: 'Could not create the account.' }); }
   signupHits.set(req.ip, [...hits, now]);
-  res.json({ ok: true, userid });
+  res.json({ ok: true, userid: email, country });
 });
 // Every /api route works on the logged-in account's data only: req.uid is the owner used in each query.
 app.use('/api', (req, res, next) => {

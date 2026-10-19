@@ -34,38 +34,11 @@ document.querySelectorAll('.mbtn').forEach((b) => b.onclick = (e) => {
   m.classList.toggle('open', !was);
 });
 document.addEventListener('click', () => document.querySelectorAll('.menu.open').forEach((m) => m.classList.remove('open')));
-// Signup: the User ID is suggested by the server from the family name (e.g. sharma-001); the user may edit it. The server re-checks it.
+// Signup: the email address is the User ID. The server detects the country from the IP and sets language, currency and starter categories.
 const closeSignup = () => $('signupModal').classList.add('hidden');
-let idEdited = false, idTimer;
-const idHint = (text, color) => { $('suHint').textContent = text; $('suHint').style.color = color || '#6c757d'; };
-const suggestId = async () => {
-  if (!$('suFamily').value.trim()) return;
-  const j = await (await fetch(`/signup/userid?family=${encodeURIComponent($('suFamily').value)}`)).json().catch(() => ({}));
-  if (j.userid && !idEdited && $('suFamily').value.trim()) { $('suUserid').value = j.userid; idHint('Suggested from your family name. You can edit it.'); }
-};
-const checkId = async () => {
-  const id = $('suUserid').value.trim().toLowerCase(); if (!id) return;
-  const j = await (await fetch(`/signup/check?userid=${encodeURIComponent(id)}`)).json().catch(() => ({}));
-  if ($('suUserid').value.trim().toLowerCase() !== id) return; // changed while checking
-  if (!j.valid) idHint('3-30 characters: lowercase letters, digits, dot, dash or underscore.', '#b00020');
-  else if (!j.available) idHint('This User ID is already taken.', '#b00020');
-  else idHint('Available.', '#198754');
-};
-// Family name and User ID are linked: emptying one empties the other (and re-enables auto-suggest).
-const resetHint = () => idHint('Suggested from your family name. You can edit it.');
-$('suFamily').oninput = () => {
-  clearTimeout(idTimer);
-  if (!$('suFamily').value.trim()) { $('suUserid').value = ''; idEdited = false; return resetHint(); }
-  if (!idEdited) idTimer = setTimeout(suggestId, 300);
-};
-$('suUserid').oninput = () => {
-  clearTimeout(idTimer);
-  if (!$('suUserid').value.trim()) { $('suFamily').value = ''; $('suUserid').value = ''; idEdited = false; return resetHint(); }
-  idEdited = true; idTimer = setTimeout(checkId, 300);
-};
 $('signup').onclick = () => {
-  ['suFamily', 'suUserid', 'suPass', 'suPass2', 'suEmail'].forEach((id) => { $(id).style.borderColor = ''; });
-  idEdited = false; $('suUserid').value = ''; $('suErr').textContent = ''; idHint('Suggested from your family name. You can edit it.');
+  ['suFamily', 'suPass', 'suPass2', 'suEmail'].forEach((id) => { $(id).style.borderColor = ''; });
+  $('suErr').textContent = '';
   $('signupFields').classList.remove('hidden'); $('signupDone').classList.add('hidden');
   $('signupModal').classList.remove('hidden'); $('suFamily').focus();
 };
@@ -76,21 +49,20 @@ $('suShow').onchange = () => ['suPass', 'suPass2'].forEach((id) => { $(id).type 
 $('signupForm').onsubmit = async (e) => {
   e.preventDefault();
   // Every field is mandatory: name the first empty one (whitespace-only counts as empty) and focus it.
-  for (const [id, label] of [['suFamily', 'Family name'], ['suUserid', 'User ID'], ['suPass', 'Password'], ['suPass2', 'Confirm password'], ['suEmail', 'Email']]) {
+  for (const [id, label] of [['suFamily', 'Family name'], ['suEmail', 'Email'], ['suPass', 'Password'], ['suPass2', 'Confirm password']]) {
     const blank = ['suPass', 'suPass2'].includes(id) ? !$(id).value : !$(id).value.trim();
     $(id).style.borderColor = blank ? '#b00020' : '';
     if (blank) { $(id).focus(); return $('suErr').textContent = `${label} is required.`; }
   }
   if ($('suPass').value !== $('suPass2').value) return $('suErr').textContent = 'Passwords do not match.';
-  const r = await post('/signup', 'POST', { family_name: $('suFamily').value.trim(), userid: $('suUserid').value, password: $('suPass').value, confirm: $('suPass2').value, email: $('suEmail').value.trim() });
+  const r = await post('/signup', 'POST', { family_name: $('suFamily').value.trim(), password: $('suPass').value, confirm: $('suPass2').value, email: $('suEmail').value.trim() });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) {
-    if (j.userid) { $('suUserid').value = j.userid; idEdited = false; idHint('Suggested a free User ID instead.', '#198754'); } // taken; server suggested another
     return $('suErr').textContent = j.error || 'Could not create the account.';
   }
   localStorage.setItem('ss_userid', j.userid); // remembered in this browser
   $('signupFields').classList.add('hidden'); $('signupDone').classList.remove('hidden');
-  $('signupDone').innerHTML = `<div class="msg ok"><b>Account created.</b><br>Your User ID is <b>${esc(j.userid)}</b>. Please note it down.<br><br>You can log in now with this User ID and your password.</div><button type="button" class="primary" id="signupOk" style="width:100%;padding:11px">Log in</button>`;
+  $('signupDone').innerHTML = `<div class="msg ok"><b>Account created.</b><br>Your login ID is <b>${esc(j.userid)}</b>.<br><br>You can log in now with this email and your password.</div><button type="button" class="primary" id="signupOk" style="width:100%;padding:11px">Log in</button>`;
   $('signupOk').onclick = () => { const id = j.userid; closeSignup(); openLogin(); $('loginUser').value = id; $('loginPass').focus(); };
   $('signupForm').reset();
 };

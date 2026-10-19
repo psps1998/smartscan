@@ -308,11 +308,10 @@
     <h2>Create your account</h2>
     <div id="signupFields">
       <label>Family name <input id="suFamily" maxlength="60" required></label>
-      <label>User ID <input id="suUserid" maxlength="30" autocapitalize="none" spellcheck="false" required><small id="suHint" style="font-weight:400;color:#6c757d">Suggested from your family name. You can edit it &mdash; you will use it to log in.</small></label>
+      <label>Email (this is your login ID) <input id="suEmail" type="email" maxlength="200" autocomplete="email" required></label>
       <label>Password <input id="suPass" type="password" minlength="8" autocomplete="new-password" required></label>
       <label>Confirm password <input id="suPass2" type="password" minlength="8" autocomplete="new-password" required></label>
       <label class="remember"><input type="checkbox" id="suShow"> Show passwords</label>
-      <label>Email <input id="suEmail" type="email" maxlength="200" autocomplete="email" required></label>
       <div id="suErr" style="color:#b00020;min-height:1.2em;font-size:.9rem"></div>
       <button class="primary" style="width:100%;padding:11px">Sign up</button>
     </div>
@@ -352,7 +351,7 @@
   <form id="loginForm" class="modal-box" method="post" action="/login" autocomplete="on">
     <button type="button" id="loginClose" class="modal-x" aria-label="Close">&times;</button>
     <h2>Login to Smartscan</h2>
-    <label>User ID <input id="loginUser" name="username" autocomplete="username" required></label>
+    <label>Email <input id="loginUser" name="username" autocomplete="username" required></label>
     <label>Password <input id="loginPass" name="password" type="password" autocomplete="current-password" required></label>
     <label class="remember"><input type="checkbox" id="loginShow"> Show password</label>
     <label class="remember"><input type="checkbox" id="loginSave" checked> Save password in this browser</label>
@@ -459,8 +458,8 @@
     <h2>Pricing</h2>
     <div class="cards">
       <div class="card plan"><h3>Starter</h3><div class="price">Free</div><ul><li>10 invoice scans a month</li><li>Inventory &amp; categories</li><li>1 household</li></ul><button class="btn-line" data-tab="scan">Get started</button></div>
-      <div class="card plan pop"><h3>Family (Recommended)</h3><div class="price">$4 <small>/ month</small></div><ul><li>Unlimited invoice scans</li><li>Usage, overstock &amp; budget reports</li><li>AI stats and order forms</li></ul><button class="btn-blue" data-tab="scan">Choose Family</button></div>
-      <div class="card plan"><h3>Household Plus</h3><div class="price">$9 <small>/ month</small></div><ul><li>Everything in Family</li><li>Multiple households</li><li>Priority support</li></ul><button class="btn-line" data-goto="contact">Contact us</button></div>
+      <div class="card plan pop"><h3>Family (Recommended)</h3><div class="price">₹120 <small>/ month</small></div><ul><li>Unlimited invoice scans</li><li>Usage, overstock &amp; budget reports</li><li>AI stats and order forms</li></ul><button class="btn-blue" data-tab="scan">Choose Family</button></div>
+      <div class="card plan"><h3>Household Plus</h3><div class="price">₹360 <small>/ month</small></div><ul><li>Everything in Family</li><li>Multiple households</li><li>Priority support</li></ul><button class="btn-line" data-goto="contact">Contact us</button></div>
     </div>
   </div>
 
