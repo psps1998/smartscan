@@ -123,6 +123,8 @@ $('signup').onclick = () => {
   $('signupModal').classList.remove('hidden'); $('suEmail').focus();
 };
 $('signupClose').onclick = closeSignup;
+$('toLogin').onclick = () => { closeSignup(); openLogin(); };
+$('toSignup').onclick = () => { closeLogin(); $('signup').click(); };
 $('signupModal').onclick = (e) => { if (e.target === $('signupModal')) closeSignup(); };
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSignup(); });
 $('suShow').onchange = () => ['suPass', 'suPass2'].forEach((id) => { $(id).type = $('suShow').checked ? 'text' : 'password'; });

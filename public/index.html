@@ -263,6 +263,42 @@
   .tip { font-weight: 400; color: #6c757d; font-size: .82rem; line-height: 1.3; min-height: 1em; } .tip.ok { color: #198754; } .tip.bad { color: #b00020; }
   .suErr { color: #b00020; min-height: 1.2em; font-size: .9rem; }
   #signupModal .modal-box { max-width: 440px; max-height: 92vh; overflow-y: auto; }
+  /* Login / signup polish */
+  .modal { backdrop-filter: blur(3px); }
+  .modal-box { border-radius: 18px; padding: 34px 34px 28px; max-width: 400px; gap: 14px; box-shadow: 0 24px 60px rgba(0, 0, 0, .55); border-top: 5px solid #2f7df0; animation: modalIn .18s ease-out; }
+  @keyframes modalIn { from { opacity: 0; transform: translateY(10px) scale(.98); } to { opacity: 1; transform: none; } }
+  .modal-box h2 { font-size: 1.5rem; margin: 0; color: #0b2536; }
+  .modal-sub { margin: -8px 0 4px; color: #6c757d; font-size: .92rem; }
+  .modal-box input:not([type=checkbox]) { border: 1.5px solid #ced4da; border-radius: 9px; padding: 11px 12px; background: #f8fafc; transition: border-color .15s, box-shadow .15s, background .15s; }
+  .modal-box input:not([type=checkbox]):focus { outline: 0; border-color: #2f7df0; background: #fff; box-shadow: 0 0 0 3px rgba(47, 125, 240, .18); }
+  .modal-box label { font-size: 14px; gap: 5px; }
+  .modal-box .primary { border-radius: 10px; font-size: 1rem; box-shadow: 0 6px 16px rgba(37, 99, 235, .3); }
+  .modal-box .primary:hover { transform: translateY(-1px); }
+  .modal-box .su-row > button:not(.primary) { border: 1.5px solid #ced4da; background: #fff; border-radius: 10px; cursor: pointer; font-weight: 600; color: #495057; }
+  /* Compact two-column signup layout (no scrolling) */
+  #signupModal .modal-box { max-width: 600px; padding: 24px 28px 18px; gap: 10px; max-height: none; overflow: visible; }
+  #signupModal .modal-box h2 { font-size: 1.35rem; }
+  #signupModal .modal-sub { margin: -6px 0 0; }
+  #signupModal .su-pane { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; align-items: start; }
+  #signupModal .su-pane.hidden { display: none; }
+  #signupModal .wide { grid-column: 1 / -1; }
+  #signupModal .su-f { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+  #signupModal .su-four { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  #signupModal input:not([type=checkbox]) { padding: 8px 10px; }
+  #signupModal .tip { font-size: .78rem; min-height: 0; }
+  #signupModal .tip:empty { display: none; }
+  #signupModal #suMembers { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; max-height: 148px; overflow-y: auto; padding: 2px; }
+  #signupModal .su-member { margin: 0; }
+  #signupModal .su-member input:first-child { flex: 3; } #signupModal .su-member input:last-child { flex: 2; }
+  #signupModal .su-pane > .primary:not(.wide), #signupModal #suBack { width: 100%; }
+  @media (max-width: 560px) { #signupModal .su-pane { grid-template-columns: 1fr; } #signupModal .su-four, #signupModal #suMembers { grid-template-columns: 1fr 1fr; } #signupModal .modal-box { max-height: 94vh; overflow-y: auto; } }
+  .modal-x { width: 32px; height: 32px; border-radius: 50% !important; line-height: 1; top: 10px; right: 10px; } .modal-x:hover { background: #eef1f4 !important; color: #212529; }
+  .su-tabs { background: #eef2f7; border-radius: 10px; padding: 4px; gap: 4px; }
+  .su-tabs button { border: 0; border-radius: 8px; padding: 9px; font-size: .92rem; }
+  .su-tabs button.on { background: #fff; color: #0b2536; box-shadow: 0 1px 4px rgba(0, 0, 0, .15); }
+  .su-member { gap: 8px; margin-bottom: 8px; }
+  #loginErr { color: #b00020; min-height: 1.1em; font-size: .9rem; }
+  .modal-switch { text-align: center; font-size: .92rem; color: #6c757d; margin: 2px 0 0; } .modal-switch a { color: #2563eb; font-weight: 600; cursor: pointer; text-decoration: none; } .modal-switch a:hover { text-decoration: underline; }
   .modal-x { position: absolute; top: 8px; right: 12px; background: none !important; border: 0 !important; font-size: 1.6rem; cursor: pointer; color: #6c757d; padding: 0 !important; }
   .modal-box label.remember { flex-direction: row; align-items: center; gap: 8px; font-weight: 400; font-size: 14px; }
   .modal-box label.remember input { width: auto; }
@@ -316,43 +352,40 @@
   <form id="signupForm" class="modal-box" autocomplete="off" novalidate>
     <button type="button" id="signupClose" class="modal-x" aria-label="Close">&times;</button>
     <h2>Create your account</h2>
+    <p class="modal-sub">Two quick steps: your login, then your family.</p>
     <div id="signupFields">
       <div class="su-tabs"><button type="button" id="suTab1" class="on">1. Account</button><button type="button" id="suTab2">2. Family</button></div>
       <div id="suPane1" class="su-pane">
-        <label>Email (this is your User ID) <input id="suEmail" type="email" maxlength="200" autocomplete="email" required></label>
-        <small class="tip" id="tip_suEmail"></small>
-        <label>Password <input id="suPass" type="password" minlength="8" autocomplete="new-password" required></label>
-        <small class="tip" id="tip_suPass"></small>
-        <label>Confirm password <input id="suPass2" type="password" minlength="8" autocomplete="new-password" required></label>
-        <small class="tip" id="tip_suPass2"></small>
-        <label class="remember"><input type="checkbox" id="suShow"> Show passwords</label>
-        <div class="suErr" id="suErr1"></div>
-        <button type="button" class="primary" id="suNext" style="width:100%;padding:11px">Next: your family</button>
+        <div class="su-f wide"><label>Email (this is your User ID) <input id="suEmail" type="email" maxlength="200" autocomplete="email" required></label>
+          <small class="tip" id="tip_suEmail"></small></div>
+        <div class="su-f"><label>Password <input id="suPass" type="password" minlength="8" autocomplete="new-password" required></label>
+          <small class="tip" id="tip_suPass"></small></div>
+        <div class="su-f"><label>Confirm password <input id="suPass2" type="password" minlength="8" autocomplete="new-password" required></label>
+          <small class="tip" id="tip_suPass2"></small></div>
+        <label class="remember wide"><input type="checkbox" id="suShow"> Show passwords</label>
+        <div class="suErr wide" id="suErr1"></div>
+        <button type="button" class="primary wide" id="suNext" style="padding:12px">Next: your family</button>
       </div>
       <div id="suPane2" class="su-pane hidden">
-        <label>Family name <input id="suFamily" maxlength="60" required></label>
-        <small class="tip" id="tip_suFamily"></small>
-        <label>Persons in the family <input id="suPersons" type="number" min="1" max="30" inputmode="numeric" required></label>
-        <small class="tip" id="tip_suPersons"></small>
-        <div class="su-row">
+        <div class="su-f"><label>Family name <input id="suFamily" maxlength="60" required></label>
+          <small class="tip" id="tip_suFamily"></small></div>
+        <div class="su-f"><label>Persons in the family <input id="suPersons" type="number" min="1" max="30" inputmode="numeric" required></label>
+          <small class="tip" id="tip_suPersons"></small></div>
+        <div class="su-f wide su-four">
           <label>Adults <input id="suAdults" type="number" min="0" max="30" inputmode="numeric" required></label>
           <label>Children <input id="suChildren" type="number" min="0" max="30" inputmode="numeric" required></label>
-        </div>
-        <small class="tip" id="tip_suAdults"></small>
-        <div class="su-row">
           <label>Males <input id="suMales" type="number" min="0" max="30" inputmode="numeric" required></label>
           <label>Females <input id="suFemales" type="number" min="0" max="30" inputmode="numeric" required></label>
         </div>
-        <small class="tip" id="tip_suMales"></small>
-        <div><b style="font-size:.95rem">Buyer members</b></div>
-        <small class="tip" id="tip_members"></small>
-        <div id="suMembers"></div>
-        <div class="suErr" id="suErr2"></div>
-        <div class="su-row">
-          <button type="button" id="suBack" style="padding:11px">Back</button>
-          <button class="primary" style="padding:11px">Sign up</button>
-        </div>
+        <small class="tip wide" id="tip_suAdults"></small>
+        <small class="tip wide" id="tip_suMales"></small>
+        <div class="wide"><b style="font-size:.95rem">Buyer members</b> <small class="tip" id="tip_members"></small></div>
+        <div id="suMembers" class="wide"></div>
+        <div class="suErr wide" id="suErr2"></div>
+        <button type="button" id="suBack" style="padding:12px">Back</button>
+        <button class="primary" style="padding:12px">Sign up</button>
       </div>
+      <p class="modal-switch">Already have an account? <a id="toLogin">Log in</a></p>
     </div>
     <div id="signupDone" class="hidden"></div>
   </form>
@@ -389,13 +422,15 @@
 <div id="loginModal"class="modal hidden" role="dialog" aria-modal="true" aria-label="Login">
   <form id="loginForm" class="modal-box" method="post" action="/login" autocomplete="on">
     <button type="button" id="loginClose" class="modal-x" aria-label="Close">&times;</button>
-    <h2>Login to Smartscan</h2>
+    <h2>Welcome back</h2>
+    <p class="modal-sub">Log in to your Smartscan household.</p>
     <label>Email <input id="loginUser" name="username" autocomplete="username" required></label>
     <label>Password <input id="loginPass" name="password" type="password" autocomplete="current-password" required></label>
     <label class="remember"><input type="checkbox" id="loginShow"> Show password</label>
     <label class="remember"><input type="checkbox" id="loginSave" checked> Save password in this browser</label>
     <div id="loginErr"></div>
-    <button class="primary" style="width:100%;padding:11px">Login</button>
+    <button class="primary" style="width:100%;padding:12px">Login</button>
+    <p class="modal-switch">New to Smartscan? <a id="toSignup">Create an account</a></p>
   </form>
 </div>
 
