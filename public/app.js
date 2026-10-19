@@ -34,11 +34,91 @@ document.querySelectorAll('.mbtn').forEach((b) => b.onclick = (e) => {
   m.classList.toggle('open', !was);
 });
 document.addEventListener('click', () => document.querySelectorAll('.menu.open').forEach((m) => m.classList.remove('open')));
-// Signup: the email address is the User ID. The server detects the country from the IP and sets language, currency and starter categories.
+// Signup is two tabs: (1) email = User ID + password, (2) family details and buyer members. Every input has a live tip.
+// The server detects the country from the IP and sets language, currency and starter categories.
 const closeSignup = () => $('signupModal').classList.add('hidden');
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/, MEMBER_ID_RE = /^[a-z0-9][a-z0-9._-]{1,29}$/;
+const suNum = (id) => { const v = $(id).value.trim(); return v === '' ? null : Number(v); };
+const suBase = () => $('suFamily').value.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 20) || 'family';
+const suSuggest = (i) => `${suBase()}-${String(i + 1).padStart(3, '0')}`;
+const setTip = (id, text, cls) => { const t = $(`tip_${id}`); t.textContent = text; t.className = `tip ${cls || ''}`; };
+let emailTaken = false, emailTimer;
+const suTips = () => {
+  const em = $('suEmail').value.trim(), pw = $('suPass').value, pw2 = $('suPass2').value;
+  if (!em) setTip('suEmail', 'Tip: use an email you can open later. It is your login ID, and activation will be sent there.');
+  else if (!EMAIL_RE.test(em)) setTip('suEmail', 'This does not look like an email yet (name@example.com).', 'bad');
+  else if (emailTaken) setTip('suEmail', 'An account with this email already exists. Log in instead.', 'bad');
+  else setTip('suEmail', 'Looks good. This will be your User ID.', 'ok');
+  if (!pw) setTip('suPass', 'Tip: at least 8 characters. A mix of letters, numbers and symbols is harder to guess.');
+  else if (pw.length < 8) setTip('suPass', `${8 - pw.length} more character(s) needed.`, 'bad');
+  else setTip('suPass', /[a-z]/i.test(pw) && /\d/.test(pw) && /\W/.test(pw) && pw.length >= 10 ? 'Strong password.' : 'OK. Adding digits, symbols or more length makes it stronger.', 'ok');
+  if (!pw2) setTip('suPass2', 'Type the same password again to be sure there is no typo.');
+  else setTip('suPass2', pw === pw2 ? 'Passwords match.' : 'Passwords do not match yet.', pw === pw2 ? 'ok' : 'bad');
+  const fam = $('suFamily').value.trim();
+  if (!fam) setTip('suFamily', 'Tip: your surname or household name, e.g. Sharma. Member IDs are suggested from it.');
+  else setTip('suFamily', fam.length < 2 ? 'At least 2 characters.' : `Member IDs will look like ${suSuggest(0)}.`, fam.length < 2 ? 'bad' : 'ok');
+  const p = suNum('suPersons'), ad = suNum('suAdults'), ch = suNum('suChildren'), m = suNum('suMales'), f = suNum('suFemales');
+  if (p === null) setTip('suPersons', 'Tip: everyone who eats from the household kitchen, including children (1-30).');
+  else setTip('suPersons', p >= 1 && p <= 30 ? `${p} person(s). The next fields must add up to this.` : 'Enter a number from 1 to 30.', p >= 1 && p <= 30 ? 'ok' : 'bad');
+  if (ad === null || ch === null) setTip('suAdults', 'Tip: adults + children must equal the persons above. Children are usually under 18.');
+  else setTip('suAdults', p === null ? 'Enter persons first.' : ad + ch === p ? `${ad} adults + ${ch} children = ${p}.` : `${ad} + ${ch} = ${ad + ch}, but persons is ${p}.`, p !== null && ad + ch === p ? 'ok' : 'bad');
+  if (m === null || f === null) setTip('suMales', 'Tip: males + females must equal the persons above. This helps size quantities per person.');
+  else setTip('suMales', p === null ? 'Enter persons first.' : m + f === p ? `${m} males + ${f} females = ${p}.` : `${m} + ${f} = ${m + f}, but persons is ${p}.`, p !== null && m + f === p ? 'ok' : 'bad');
+  setTip('members', p >= 1 ? `Enter the name of each person who will buy or scan groceries (at least 1, up to ${p}). IDs are suggested and can be edited; leave a name empty to skip that row.` : 'Enter the number of persons first. One row per person will appear here.');
+};
+const suMembers = () => {
+  const box = $('suMembers'), p = Math.min(Math.max(suNum('suPersons') || 0, 0), 30);
+  while (box.children.length > p) box.lastChild.remove();
+  while (box.children.length < p) {
+    const row = document.createElement('div'); row.className = 'su-member';
+    row.innerHTML = '<input class="mn" maxlength="60" placeholder="Member name"><input class="mc" maxlength="30" autocapitalize="none" spellcheck="false">';
+    row.querySelector('.mc').oninput = (e) => { e.target.dataset.edited = '1'; suTips(); };
+    row.querySelector('.mn').oninput = suTips;
+    box.appendChild(row);
+  }
+  [...box.children].forEach((row, i) => { const c = row.querySelector('.mc'); if (!c.dataset.edited) c.value = suSuggest(i); });
+};
+const suAutofill = (e) => { // children = persons - adults, females = persons - males, until the user types in the second field themselves
+  const p = suNum('suPersons');
+  if (e.target.id === 'suChildren' || e.target.id === 'suFemales') e.target.dataset.touched = '1';
+  if (p === null) return;
+  if (['suPersons', 'suAdults'].includes(e.target.id) && suNum('suAdults') !== null && !$('suChildren').dataset.touched) $('suChildren').value = Math.max(0, p - suNum('suAdults'));
+  if (['suPersons', 'suMales'].includes(e.target.id) && suNum('suMales') !== null && !$('suFemales').dataset.touched) $('suFemales').value = Math.max(0, p - suNum('suMales'));
+};
+['suEmail', 'suPass', 'suPass2', 'suFamily', 'suPersons', 'suAdults', 'suChildren', 'suMales', 'suFemales'].forEach((id) => {
+  $(id).addEventListener('input', (e) => { $(id).style.borderColor = ''; suAutofill(e); suMembers(); suTips(); });
+});
+$('suEmail').addEventListener('input', () => {
+  clearTimeout(emailTimer); emailTaken = false;
+  const em = $('suEmail').value.trim();
+  if (EMAIL_RE.test(em)) emailTimer = setTimeout(async () => {
+    const j = await (await fetch(`/signup/email?email=${encodeURIComponent(em)}`)).json().catch(() => ({}));
+    if ($('suEmail').value.trim() === em) { emailTaken = j.available === false; suTips(); }
+  }, 400);
+});
+const suShowTab = (n) => {
+  $('suPane1').classList.toggle('hidden', n !== 1); $('suPane2').classList.toggle('hidden', n !== 2);
+  $('suTab1').classList.toggle('on', n === 1); $('suTab2').classList.toggle('on', n === 2);
+  $(n === 1 ? 'suEmail' : 'suFamily').focus();
+};
+const suCheck1 = () => {
+  const em = $('suEmail').value.trim(), pw = $('suPass').value;
+  const bad = (id, msg) => { $(id).style.borderColor = '#b00020'; $(id).focus(); $('suErr1').textContent = msg; return false; };
+  if (!EMAIL_RE.test(em)) return bad('suEmail', 'Enter a valid email address.');
+  if (emailTaken) return bad('suEmail', 'An account with this email already exists.');
+  if (pw.length < 8) return bad('suPass', 'Password must be at least 8 characters.');
+  if (pw !== $('suPass2').value) return bad('suPass2', 'Passwords do not match.');
+  $('suErr1').textContent = ''; return true;
+};
+$('suNext').onclick = () => { if (suCheck1()) suShowTab(2); };
+$('suTab1').onclick = () => suShowTab(1);
+$('suTab2').onclick = () => { if (suCheck1()) suShowTab(2); };
+$('suBack').onclick = () => suShowTab(1);
 $('signup').onclick = () => {
-  ['suFamily', 'suPass', 'suPass2', 'suEmail'].forEach((id) => { $(id).style.borderColor = ''; });
-  $('suErr').textContent = '';
+  $('signupForm').reset(); emailTaken = false;
+  document.querySelectorAll('#signupForm input').forEach((i) => { i.style.borderColor = ''; delete i.dataset.touched; });
+  $('suMembers').innerHTML = ''; $('suErr1').textContent = $('suErr2').textContent = '';
+  suTips(); suShowTab(1);
   $('signupFields').classList.remove('hidden'); $('signupDone').classList.add('hidden');
   $('signupModal').classList.remove('hidden'); $('suEmail').focus();
 };
@@ -48,18 +128,23 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSignu
 $('suShow').onchange = () => ['suPass', 'suPass2'].forEach((id) => { $(id).type = $('suShow').checked ? 'text' : 'password'; });
 $('signupForm').onsubmit = async (e) => {
   e.preventDefault();
-  // Every field is mandatory: name the first empty one (whitespace-only counts as empty) and focus it.
-  for (const [id, label] of [['suEmail', 'Email'], ['suFamily', 'Family name'], ['suPass', 'Password'], ['suPass2', 'Confirm password']]) {
-    const blank = ['suPass', 'suPass2'].includes(id) ? !$(id).value : !$(id).value.trim();
-    $(id).style.borderColor = blank ? '#b00020' : '';
-    if (blank) { $(id).focus(); return $('suErr').textContent = `${label} is required.`; }
-  }
-  if ($('suPass').value !== $('suPass2').value) return $('suErr').textContent = 'Passwords do not match.';
-  const r = await post('/signup', 'POST', { family_name: $('suFamily').value.trim(), password: $('suPass').value, confirm: $('suPass2').value, email: $('suEmail').value.trim() });
+  if (!suCheck1()) return suShowTab(1);
+  const bad = (id, msg) => { $(id).style.borderColor = '#b00020'; $(id).focus(); $('suErr2').textContent = msg; };
+  const fam = $('suFamily').value.trim(), p = suNum('suPersons'), ad = suNum('suAdults'), ch = suNum('suChildren'), m = suNum('suMales'), f = suNum('suFemales');
+  if (fam.length < 2) return bad('suFamily', 'Enter your family name (at least 2 characters).');
+  if (!(p >= 1 && p <= 30)) return bad('suPersons', 'Persons must be a number from 1 to 30.');
+  if (ad === null || ch === null || ad + ch !== p) return bad('suAdults', `Adults + children must equal ${p}.`);
+  if (m === null || f === null || m + f !== p) return bad('suMales', `Males + females must equal ${p}.`);
+  const members = [...$('suMembers').children].map((r) => ({ name: r.querySelector('.mn').value.trim(), code: r.querySelector('.mc').value.trim().toLowerCase() })).filter((x) => x.name);
+  if (!members.length) { $('suErr2').textContent = 'Add at least one buyer member name.'; return $('suMembers').querySelector('.mn').focus(); }
+  const badCode = members.find((x) => !MEMBER_ID_RE.test(x.code));
+  if (badCode) return $('suErr2').textContent = `Member ID "${badCode.code}" must be 2-30 characters: lowercase letters, digits, dot, dash or underscore.`;
+  if (new Set(members.map((x) => x.code)).size !== members.length) return $('suErr2').textContent = 'Member IDs must be unique.';
+  $('suErr2').textContent = '';
+  const r = await post('/signup', 'POST', { email: $('suEmail').value.trim(), password: $('suPass').value, confirm: $('suPass2').value,
+    family_name: fam, persons: p, adults: ad, children: ch, males: m, females: f, members });
   const j = await r.json().catch(() => ({}));
-  if (!r.ok) {
-    return $('suErr').textContent = j.error || 'Could not create the account.';
-  }
+  if (!r.ok) { if (r.status === 409) suShowTab(1); return (r.status === 409 ? $('suErr1') : $('suErr2')).textContent = j.error || 'Could not create the account.'; }
   localStorage.setItem('ss_userid', j.userid); // remembered in this browser
   $('signupFields').classList.add('hidden'); $('signupDone').classList.remove('hidden');
   $('signupDone').innerHTML = `<div class="msg ok"><b>Account created.</b><br>Your login ID is <b>${esc(j.userid)}</b>.<br><br>You can log in now with this email and your password.</div><button type="button" class="primary" id="signupOk" style="width:100%;padding:11px">Log in</button>`;

@@ -253,6 +253,16 @@
   .modal-box { position: relative; background: #fff; border-radius: 14px; padding: 28px 30px; width: 100%; max-width: 360px; box-shadow: 0 16px 40px rgba(0, 0, 0, .5); display: flex; flex-direction: column; gap: 12px; color: #212529; }
   .modal-box h2 { margin: 0 0 4px; }
   .modal-box input { width: 100%; box-sizing: border-box; padding: 9px; font-size: 1rem; }
+  .su-tabs { display: flex; gap: 6px; margin-bottom: 4px; }
+  .su-tabs button { flex: 1; padding: 8px; border: 0; border-bottom: 3px solid #dee2e6; background: none; color: #6c757d; font-weight: 600; cursor: pointer; }
+  .su-tabs button.on { border-color: #2f7df0; color: #212529; }
+  .su-pane { display: flex; flex-direction: column; gap: 8px; }
+  .su-pane.hidden { display: none; }
+  .su-row { display: flex; gap: 10px; } .su-row > * { flex: 1; min-width: 0; }
+  .su-member { display: flex; gap: 6px; margin-bottom: 6px; } .su-member input:first-child { flex: 3; } .su-member input:last-child { flex: 2; }
+  .tip { font-weight: 400; color: #6c757d; font-size: .82rem; line-height: 1.3; min-height: 1em; } .tip.ok { color: #198754; } .tip.bad { color: #b00020; }
+  .suErr { color: #b00020; min-height: 1.2em; font-size: .9rem; }
+  #signupModal .modal-box { max-width: 440px; max-height: 92vh; overflow-y: auto; }
   .modal-x { position: absolute; top: 8px; right: 12px; background: none !important; border: 0 !important; font-size: 1.6rem; cursor: pointer; color: #6c757d; padding: 0 !important; }
   .modal-box label.remember { flex-direction: row; align-items: center; gap: 8px; font-weight: 400; font-size: 14px; }
   .modal-box label.remember input { width: auto; }
@@ -307,13 +317,42 @@
     <button type="button" id="signupClose" class="modal-x" aria-label="Close">&times;</button>
     <h2>Create your account</h2>
     <div id="signupFields">
-      <label>Email (this is your login ID) <input id="suEmail" type="email" maxlength="200" autocomplete="email" required></label>
-      <label>Family name <input id="suFamily" maxlength="60" required></label>
-      <label>Password <input id="suPass" type="password" minlength="8" autocomplete="new-password" required></label>
-      <label>Confirm password <input id="suPass2" type="password" minlength="8" autocomplete="new-password" required></label>
-      <label class="remember"><input type="checkbox" id="suShow"> Show passwords</label>
-      <div id="suErr" style="color:#b00020;min-height:1.2em;font-size:.9rem"></div>
-      <button class="primary" style="width:100%;padding:11px">Sign up</button>
+      <div class="su-tabs"><button type="button" id="suTab1" class="on">1. Account</button><button type="button" id="suTab2">2. Family</button></div>
+      <div id="suPane1" class="su-pane">
+        <label>Email (this is your User ID) <input id="suEmail" type="email" maxlength="200" autocomplete="email" required></label>
+        <small class="tip" id="tip_suEmail"></small>
+        <label>Password <input id="suPass" type="password" minlength="8" autocomplete="new-password" required></label>
+        <small class="tip" id="tip_suPass"></small>
+        <label>Confirm password <input id="suPass2" type="password" minlength="8" autocomplete="new-password" required></label>
+        <small class="tip" id="tip_suPass2"></small>
+        <label class="remember"><input type="checkbox" id="suShow"> Show passwords</label>
+        <div class="suErr" id="suErr1"></div>
+        <button type="button" class="primary" id="suNext" style="width:100%;padding:11px">Next: your family</button>
+      </div>
+      <div id="suPane2" class="su-pane hidden">
+        <label>Family name <input id="suFamily" maxlength="60" required></label>
+        <small class="tip" id="tip_suFamily"></small>
+        <label>Persons in the family <input id="suPersons" type="number" min="1" max="30" inputmode="numeric" required></label>
+        <small class="tip" id="tip_suPersons"></small>
+        <div class="su-row">
+          <label>Adults <input id="suAdults" type="number" min="0" max="30" inputmode="numeric" required></label>
+          <label>Children <input id="suChildren" type="number" min="0" max="30" inputmode="numeric" required></label>
+        </div>
+        <small class="tip" id="tip_suAdults"></small>
+        <div class="su-row">
+          <label>Males <input id="suMales" type="number" min="0" max="30" inputmode="numeric" required></label>
+          <label>Females <input id="suFemales" type="number" min="0" max="30" inputmode="numeric" required></label>
+        </div>
+        <small class="tip" id="tip_suMales"></small>
+        <div><b style="font-size:.95rem">Buyer members</b></div>
+        <small class="tip" id="tip_members"></small>
+        <div id="suMembers"></div>
+        <div class="suErr" id="suErr2"></div>
+        <div class="su-row">
+          <button type="button" id="suBack" style="padding:11px">Back</button>
+          <button class="primary" style="padding:11px">Sign up</button>
+        </div>
+      </div>
     </div>
     <div id="signupDone" class="hidden"></div>
   </form>

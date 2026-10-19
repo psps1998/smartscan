@@ -286,14 +286,27 @@ mountAdmin(app, db); // /admin: database management dashboard (own login, see ad
 const signupHits = new Map(); // ip -> [timestamps]
 // The User ID is the account's email address (lowercased). Email activation is still to come.
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+app.get('/signup/email', (req, res) => {
+  const e = String(req.query.email || '').trim().toLowerCase();
+  res.json({ valid: EMAIL_RE.test(e), available: EMAIL_RE.test(e) && !db.prepare('SELECT 1 FROM users WHERE userid = ? COLLATE NOCASE OR email = ?').get(e, e) });
+});
+const MEMBER_ID_RE = /^[a-z0-9][a-z0-9._-]{1,29}$/;
 app.post('/signup', async (req, res) => {
   const now = Date.now(), hits = (signupHits.get(req.ip) || []).filter((t) => now - t < 3600000);
   if (hits.length >= 5) return res.status(429).json({ error: 'Too many signups from this address. Please try again later.' });
   const b = req.body || {}, family = String(b.family_name || '').trim(), email = String(b.email || '').trim().toLowerCase();
-  if (family.length < 2 || family.length > 60) return res.status(400).json({ error: 'Enter your family name (2-60 characters).' });
+  const n = (v) => Math.max(0, Math.floor(Number(v) || 0)), persons = n(b.persons), adults = n(b.adults), children = n(b.children), males = n(b.males), females = n(b.females);
+  const members = (Array.isArray(b.members) ? b.members : []).slice(0, 30).map((m) => ({ name: String(m?.name || '').trim().slice(0, 60), code: String(m?.code || '').trim().toLowerCase() })).filter((m) => m.name);
   if (!EMAIL_RE.test(email) || email.length > 200) return res.status(400).json({ error: 'Enter a valid email address.' });
   if (typeof b.password !== 'string' || b.password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters.' });
   if (b.password !== b.confirm) return res.status(400).json({ error: 'Passwords do not match.' });
+  if (family.length < 2 || family.length > 60) return res.status(400).json({ error: 'Enter your family name (2-60 characters).' });
+  if (persons < 1 || persons > 30) return res.status(400).json({ error: 'Persons must be between 1 and 30.' });
+  if (adults + children !== persons) return res.status(400).json({ error: `Adults + children (${adults + children}) must equal persons (${persons}).` });
+  if (males + females !== persons) return res.status(400).json({ error: `Males + females (${males + females}) must equal persons (${persons}).` });
+  if (!members.length) return res.status(400).json({ error: 'Add at least one buyer member.' });
+  if (members.length > persons) return res.status(400).json({ error: `Buyer members cannot exceed the ${persons} persons in the family.` });
+  if (members.some((m) => !MEMBER_ID_RE.test(m.code)) || new Set(members.map((m) => m.code)).size !== members.length) return res.status(400).json({ error: 'Member IDs must be unique, 2-30 characters: lowercase letters, digits, dot, dash or underscore.' });
   if (db.prepare('SELECT 1 FROM users WHERE userid = ? COLLATE NOCASE OR email = ?').get(email, email)) return res.status(409).json({ error: 'An account with this email already exists.' });
   const country = await detectCountry(req), [language, currency] = countryDefaults(country);
   db.exec('BEGIN');
@@ -303,6 +316,11 @@ app.post('/signup', async (req, res) => {
     const put = db.prepare('INSERT INTO user_settings (owner, key, value) VALUES (?,?,?)');
     put.run(email, 'country', country); put.run(email, 'language', language); put.run(email, 'currency', currency);
     seedCategories(email, country);
+    // Age groups are filled in later on the household screen (it requires them to total the persons).
+    db.prepare('INSERT INTO households (owner, code, family_name, persons, children, adults, males, females, age_groups, buyers) VALUES (?,?,?,?,?,?,?,?,?,?)')
+      .run(email, email, family, persons, children, adults, males, females, JSON.stringify(Object.fromEntries(AGE_GROUPS.map((g) => [g, 0]))), members.length);
+    const addBuyer = db.prepare('INSERT INTO buyers (owner, code, name) VALUES (?,?,?)');
+    for (const m of members) addBuyer.run(email, m.code, m.name);
     db.exec('COMMIT');
   } catch (e) { db.exec('ROLLBACK'); return res.status(500).json({ error: 'Could not create the account.' }); }
   signupHits.set(req.ip, [...hits, now]);
