@@ -40,7 +40,7 @@ $('signup').onclick = () => {
   ['suFamily', 'suPass', 'suPass2', 'suEmail'].forEach((id) => { $(id).style.borderColor = ''; });
   $('suErr').textContent = '';
   $('signupFields').classList.remove('hidden'); $('signupDone').classList.add('hidden');
-  $('signupModal').classList.remove('hidden'); $('suFamily').focus();
+  $('signupModal').classList.remove('hidden'); $('suEmail').focus();
 };
 $('signupClose').onclick = closeSignup;
 $('signupModal').onclick = (e) => { if (e.target === $('signupModal')) closeSignup(); };
@@ -49,7 +49,7 @@ $('suShow').onchange = () => ['suPass', 'suPass2'].forEach((id) => { $(id).type 
 $('signupForm').onsubmit = async (e) => {
   e.preventDefault();
   // Every field is mandatory: name the first empty one (whitespace-only counts as empty) and focus it.
-  for (const [id, label] of [['suFamily', 'Family name'], ['suEmail', 'Email'], ['suPass', 'Password'], ['suPass2', 'Confirm password']]) {
+  for (const [id, label] of [['suEmail', 'Email'], ['suFamily', 'Family name'], ['suPass', 'Password'], ['suPass2', 'Confirm password']]) {
     const blank = ['suPass', 'suPass2'].includes(id) ? !$(id).value : !$(id).value.trim();
     $(id).style.borderColor = blank ? '#b00020' : '';
     if (blank) { $(id).focus(); return $('suErr').textContent = `${label} is required.`; }
