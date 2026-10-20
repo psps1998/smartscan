@@ -5,6 +5,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { createHmac, createHash, timingSafeEqual, scryptSync, randomBytes } from 'node:crypto';
 import { mountAdmin } from './admin/routes.js';
+import { sendMail } from './mailer.js';
 
 mkdirSync('data', { recursive: true });
 const db = new DatabaseSync('data/inventory.db');
@@ -148,6 +149,10 @@ app.use(express.json());
 db.exec(`CREATE TABLE IF NOT EXISTS users (
   userid TEXT PRIMARY KEY, family_name TEXT NOT NULL, email TEXT NOT NULL UNIQUE COLLATE NOCASE, password_hash TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'pending', activation_token TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP, activated_at TEXT)`);
+// users.country (ISO code, detected from the IP at signup) pairs with country_categories.country, the shared starter category set for that country.
+try { db.exec('ALTER TABLE users ADD COLUMN country TEXT'); } catch {}
+db.exec("UPDATE users SET country = (SELECT value FROM user_settings WHERE owner = users.userid AND key = 'country') WHERE country IS NULL");
+db.exec('CREATE INDEX IF NOT EXISTS idx_users_country ON users (country)');
 db.exec('CREATE TABLE IF NOT EXISTS app_meta (key TEXT PRIMARY KEY, value TEXT)');
 const APP_USER = process.env.APP_USER || 'testscan'; // only used to adopt data from the old single-user setup (see migration below)
 const SESSION_SECRET = process.env.SESSION_SECRET || (() => {
@@ -168,6 +173,43 @@ const verifyPassword = (pw, stored) => {
 };
 const DUMMY_HASH = hashPassword(randomBytes(8).toString('hex')); // compared against when the User ID is unknown, so timing doesn't reveal it
 const userRow = (id) => db.prepare('SELECT userid, family_name, email, password_hash, status FROM users WHERE userid = ? COLLATE NOCASE').get(String(id ?? '').trim());
+
+// --- Email links: activation (24 h) and password reset (1 h). Only a sha256 of each token is stored; a token works once. ---
+db.exec('CREATE TABLE IF NOT EXISTS email_tokens (token_hash TEXT PRIMARY KEY, userid TEXT NOT NULL, purpose TEXT NOT NULL, expires_at INTEGER NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP)');
+const APP_URL = (process.env.APP_URL || `http://localhost:${process.env.PORT || 3000}`).replace(/\/$/, ''); // link base: never taken from the request's Host header
+const TOKEN_MS = { activate: 24 * 3600000, reset: 3600000 };
+const hashToken = (t) => createHash('sha256').update(String(t)).digest('hex');
+function makeToken(userid, purpose) {
+  db.prepare('DELETE FROM email_tokens WHERE userid = ? AND purpose = ?').run(userid, purpose); // one live link per purpose
+  const t = randomBytes(32).toString('base64url');
+  db.prepare('INSERT INTO email_tokens (token_hash, userid, purpose, expires_at) VALUES (?,?,?,?)').run(hashToken(t), userid, purpose, Date.now() + TOKEN_MS[purpose]);
+  return t;
+}
+function takeToken(token, purpose) { // returns the userid and uses the token up, or null
+  db.prepare('DELETE FROM email_tokens WHERE expires_at < ?').run(Date.now());
+  const h = hashToken(token), r = db.prepare('SELECT userid FROM email_tokens WHERE token_hash = ? AND purpose = ?').get(h, purpose);
+  if (!r) return null;
+  db.prepare('DELETE FROM email_tokens WHERE token_hash = ?').run(h);
+  return r.userid;
+}
+const escHtml = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+async function emailLink(u, kind) { try {
+  const act = kind === 'activate', url = act ? `${APP_URL}/activate?token=${makeToken(u.userid, 'activate')}` : `${APP_URL}/?reset=${makeToken(u.userid, 'reset')}`;
+  const head = act ? 'Activate your Smartscan account' : 'Reset your Smartscan password';
+  const line = act ? `Hi ${u.family_name}, thanks for signing up. Please confirm your email to activate your account. The link works for 24 hours.`
+    : `Hi ${u.family_name}, we received a request to reset your password. The link works for 1 hour. If you did not ask for this, ignore this email; your password stays the same.`;
+  const html = `<div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;color:#212529"><h2 style="color:#0b2536">${head}</h2><p>${escHtml(line)}</p>
+    <p><a href="${url}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:bold">${act ? 'Activate account' : 'Choose a new password'}</a></p>
+    <p style="color:#6c757d;font-size:13px">Or paste this link into your browser:<br>${url}</p></div>`;
+  await sendMail({ to: u.email, subject: head, text: `${line}\n\n${url}`, html });
+} catch (e) { console.error('Email failed:', e.message); } } // never throws: callers do not await it
+// Simple sliding-window limiter: returns true (and does not count) when key already has `max` hits in the last hour.
+const limited = (map, key, max) => {
+  const now = Date.now(), hits = (map.get(key) || []).filter((t) => now - t < 3600000);
+  if (hits.length >= max) { map.set(key, hits); return true; }
+  map.set(key, [...hits, now]); return false;
+};
+const mailHitsIp = new Map(), mailHitsEmail = new Map();
 
 // One-time upgrade from the single-household schema: every data table gets an owner (users.userid) and the existing data is
 // handed to the account for the old household (the users row whose User ID equals the old household code, else the APP_USER account).
@@ -253,6 +295,7 @@ app.post('/login', (req, res) => {
     failures.set(ip, { n: (f && f.until > Date.now() ? f.n : 0) + 1, until: Date.now() + 5 * 60000 });
     return res.status(401).json({ error: 'Invalid user id or password.' });
   }
+  if (u.status === 'pending') return res.status(403).json({ code: 'pending', error: 'Please activate your account first. We emailed you a link when you signed up.' });
   if (u.status !== 'active') return res.status(403).json({ error: 'This account is disabled. Please contact support.' });
   failures.delete(ip);
   const exp = Date.now() + SESSION_MS;
@@ -311,10 +354,10 @@ app.post('/signup', async (req, res) => {
   const country = await detectCountry(req), [language, currency] = countryDefaults(country);
   db.exec('BEGIN');
   try {
-    db.prepare("INSERT INTO users (userid, family_name, email, password_hash, status, activation_token, activated_at) VALUES (?, ?, ?, ?, 'active', ?, CURRENT_TIMESTAMP)")
-      .run(email, family, email, hashPassword(b.password), randomBytes(24).toString('base64url'));
+    db.prepare("INSERT INTO users (userid, family_name, email, password_hash, status, country) VALUES (?, ?, ?, ?, 'pending', ?)")
+      .run(email, family, email, hashPassword(b.password), country);
     const put = db.prepare('INSERT INTO user_settings (owner, key, value) VALUES (?,?,?)');
-    put.run(email, 'country', country); put.run(email, 'language', language); put.run(email, 'currency', currency);
+    put.run(email, 'language', language); put.run(email, 'currency', currency);
     seedCategories(email, country);
     // Age groups are filled in later on the household screen (it requires them to total the persons).
     db.prepare('INSERT INTO households (owner, code, family_name, persons, children, adults, males, females, age_groups, buyers) VALUES (?,?,?,?,?,?,?,?,?,?)')
@@ -324,7 +367,37 @@ app.post('/signup', async (req, res) => {
     db.exec('COMMIT');
   } catch (e) { db.exec('ROLLBACK'); return res.status(500).json({ error: 'Could not create the account.' }); }
   signupHits.set(req.ip, [...hits, now]);
-  res.json({ ok: true, userid: email, country });
+  emailLink({ userid: email, family_name: family, email }, 'activate'); // not awaited: a slow mail server must not delay the response
+  res.json({ ok: true, pending: true, userid: email, country });
+});
+// Activation link from the email.
+app.get('/activate', (req, res) => {
+  const userid = takeToken(req.query.token, 'activate');
+  if (!userid) return res.redirect('/?activated=0');
+  db.prepare("UPDATE users SET status = 'active', activated_at = COALESCE(activated_at, CURRENT_TIMESTAMP) WHERE userid = ? AND status = 'pending'").run(userid);
+  res.redirect('/?activated=1');
+});
+// Resend and forgot-password always answer the same way, so they do not reveal which emails have accounts.
+const GENERIC = { ok: true, message: 'If that email has an account, we have sent you a link. Please check your inbox (and spam folder).' };
+const mailRequest = (kind) => async (req, res) => {
+  const email = String(req.body?.email || '').trim().toLowerCase();
+  if (!EMAIL_RE.test(email)) return res.status(400).json({ error: 'Enter a valid email address.' });
+  if (limited(mailHitsIp, req.ip, 10) || limited(mailHitsEmail, email, 3)) return res.status(429).json({ error: 'Too many requests. Please try again in an hour.' });
+  const u = db.prepare('SELECT userid, family_name, email, status FROM users WHERE userid = ? COLLATE NOCASE').get(email);
+  const what = !u ? null : u.status === 'pending' ? 'activate' : u.status === 'active' && kind === 'forgot' ? 'reset' : null; // disabled accounts get nothing
+  if (what) emailLink(u, what); // not awaited, so response time does not reveal whether the account exists
+  res.json(GENERIC);
+};
+app.post('/signup/resend', mailRequest('resend'));
+app.post('/forgot', mailRequest('forgot'));
+app.post('/reset', (req, res) => {
+  const { token, password, confirm } = req.body || {};
+  if (typeof password !== 'string' || password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters.' });
+  if (password !== confirm) return res.status(400).json({ error: 'Passwords do not match.' });
+  const userid = takeToken(token, 'reset');
+  if (!userid) return res.status(400).json({ error: 'This reset link is invalid or has expired. Please request a new one.' });
+  db.prepare('UPDATE users SET password_hash = ? WHERE userid = ?').run(hashPassword(password), userid);
+  res.json({ ok: true });
 });
 // Every /api route works on the logged-in account's data only: req.uid is the owner used in each query.
 app.use('/api', (req, res, next) => {
@@ -714,11 +787,12 @@ app.patch('/api/inventory/:id', (req, res) => {
   // Changing Used qty by hand is logged as consumption (or a correction) so the overstock report sees it.
   const cur = db.prepare('SELECT used_qty FROM inventory WHERE id=? AND owner=?').get(req.params.id, req.uid);
   if (!cur) return res.status(404).json({ error: 'Item not found' });
-  const used = Math.max(0, Number(req.body.used_qty) || 0), delta = used - (cur.used_qty || 0);
+  const used = Math.max(0, Number(req.body.used_qty) || 0), delta = used - (cur.used_qty || 0), qty = Number(req.body.quantity) || 0;
+  if (used > qty + 1e-9) return res.status(400).json({ error: `Used qty (${round(used)}) cannot be more than Qty (${round(qty)}).` });
   const categoryId = db.prepare('SELECT id FROM categories WHERE id=? AND owner=?').get(Number(req.body.category_id) || 0, req.uid)?.id ?? null;
   if (delta) db.prepare('INSERT INTO consumption_log (inventory_id, quantity) VALUES (?,?)').run(req.params.id, delta);
   db.prepare('UPDATE inventory SET quantity=?, used_qty=?, avg_rate=?, min_qty=COALESCE(?, min_qty), category_id=?, used_by=?, consumption_type=COALESCE(?, consumption_type), updated_at=CURRENT_TIMESTAMP WHERE id=? AND owner=?')
-    .run(Number(req.body.quantity) || 0, used, Number(req.body.avg_rate) || 0, req.body.min_qty == null ? null : Number(req.body.min_qty) || 0, categoryId, usedBy(req.body.used_by), pickConsumption(req.body.consumption_type), req.params.id, req.uid);
+    .run(qty, used, Number(req.body.avg_rate) || 0, req.body.min_qty == null ? null : Number(req.body.min_qty) || 0, categoryId, usedBy(req.body.used_by), pickConsumption(req.body.consumption_type), req.params.id, req.uid);
   res.json({ ok: true });
 });
 app.post('/api/inventory/:id/consume', (req, res) => {

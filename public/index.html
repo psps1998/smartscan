@@ -325,6 +325,10 @@
   /* Footer */
   footer.site { margin-top: 56px; padding: 8px 0 28px; color: #fff; background: radial-gradient(ellipse 80% 90% at 65% 115%, #4f7fd6 0%, #214a93 38%, rgba(3, 21, 33, 0) 72%), #031521; }
   footer.site .fwrap { max-width: 1440px; margin: 0 auto; padding: 0 20px; }
+  /* Footer brand is 30% smaller than the header one */
+  footer.site .brand { font-size: 1.19rem; }
+  footer.site .brand .logo { width: 22px; height: 22px; line-height: 22px; font-size: .77rem; border-radius: 6px; margin-right: 6px; }
+  footer.site .brand .tagline { font-size: .5rem; }
   footer.site hr { border: 0; border-top: 1px solid rgba(255, 255, 255, .85); margin: 28px 0; }
   .flinks { display: flex; flex-wrap: wrap; gap: 14px 48px; margin: 36px 0; }
   .flinks a, .fbot a { color: #fff; text-decoration: none; cursor: pointer; font-size: 16px; }
@@ -430,9 +434,34 @@
     <label>Password <input id="loginPass" name="password" type="password" autocomplete="current-password" required></label>
     <label class="remember"><input type="checkbox" id="loginShow"> Show password</label>
     <label class="remember"><input type="checkbox" id="loginSave" checked> Save password in this browser</label>
+    <div id="loginMsg" class="msg ok hidden"></div>
     <div id="loginErr"></div>
     <button class="primary" style="width:100%;padding:12px">Login</button>
+    <p class="modal-switch" style="margin:0"><a id="toForgot">Forgot password?</a></p>
     <p class="modal-switch">New to Smartscan? <a id="toSignup">Create an account</a></p>
+  </form>
+</div>
+
+<div id="forgotModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Forgot password">
+  <form id="forgotForm" class="modal-box" novalidate>
+    <button type="button" id="forgotClose" class="modal-x" aria-label="Close">&times;</button>
+    <h2>Forgot password?</h2>
+    <p class="modal-sub">Enter your account email and we will send you a link to choose a new password.</p>
+    <label>Email <input id="fgEmail" type="email" maxlength="200" autocomplete="email" required></label>
+    <div id="fgMsg" class="suErr"></div>
+    <button class="primary" style="width:100%;padding:12px">Send reset link</button>
+    <p class="modal-switch" style="margin:0"><a id="fgBack">Back to login</a></p>
+  </form>
+</div>
+<div id="resetModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Choose a new password">
+  <form id="resetForm" class="modal-box" novalidate>
+    <button type="button" id="resetClose" class="modal-x" aria-label="Close">&times;</button>
+    <h2>Choose a new password</h2>
+    <label>New password <input id="rsPass" type="password" minlength="8" autocomplete="new-password" required></label>
+    <label>Confirm new password <input id="rsPass2" type="password" minlength="8" autocomplete="new-password" required></label>
+    <label class="remember"><input type="checkbox" id="rsShow"> Show passwords</label>
+    <div id="rsMsg" class="suErr"></div>
+    <button class="primary" style="width:100%;padding:12px">Save new password</button>
   </form>
 </div>
 

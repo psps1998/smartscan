@@ -149,7 +149,9 @@ $('signupForm').onsubmit = async (e) => {
   if (!r.ok) { if (r.status === 409) suShowTab(1); return (r.status === 409 ? $('suErr1') : $('suErr2')).textContent = j.error || 'Could not create the account.'; }
   localStorage.setItem('ss_userid', j.userid); // remembered in this browser
   $('signupFields').classList.add('hidden'); $('signupDone').classList.remove('hidden');
-  $('signupDone').innerHTML = `<div class="msg ok"><b>Account created.</b><br>Your login ID is <b>${esc(j.userid)}</b>.<br><br>You can log in now with this email and your password.</div><button type="button" class="primary" id="signupOk" style="width:100%;padding:11px">Log in</button>`;
+  const em = $('suEmail').value.trim();
+  $('signupDone').innerHTML = `<div class="msg ok"><b>Account created.</b><br>We sent an activation link to <b>${esc(j.userid)}</b>. Click it to activate your account, then log in. The link works for 24 hours.<br><br>Not there? Check your spam folder.</div><div id="resendMsg" class="suErr"></div><button type="button" id="resendBtn" style="width:100%;padding:11px;margin-bottom:8px">Resend activation email</button><button type="button" class="primary" id="signupOk" style="width:100%;padding:11px">Go to login</button>`;
+  $('resendBtn').onclick = async () => { const r2 = await post('/signup/resend', 'POST', { email: em }); $('resendMsg').style.color = r2.ok ? '#198754' : '#b00020'; $('resendMsg').textContent = r2.ok ? 'Sent again. Please check your inbox.' : ((await r2.json().catch(() => ({}))).error || 'Could not resend.'); };
   $('signupOk').onclick = () => { const id = j.userid; closeSignup(); openLogin(); $('loginUser').value = id; $('loginPass').focus(); };
   $('signupForm').reset();
 };
@@ -613,6 +615,11 @@ async function loadInventory() {
     const vals = rows.map((tr) => (parseFloat(tr.querySelector('.q').value) || 0) * (parseFloat(tr.querySelector('.r').value) || 0));
     const total = vals.reduce((s, v) => s + v, 0);
     rows.forEach((tr, k) => {
+      // Used qty can never exceed Qty (total purchased): flag the row and block Save until fixed.
+      const over = bals[k] < -1e-9, uq = tr.querySelector('.uq');
+      uq.style.borderColor = over ? '#b00020' : ''; uq.style.background = over ? '#fde8ea' : '';
+      uq.title = over ? `Used qty cannot be more than Qty (${parseFloat(tr.querySelector('.q').value) || 0})` : '';
+      tr.querySelector('.s').disabled = over; tr.querySelector('.s').title = over ? uq.title : 'Save';
       tr.querySelector('.bal').textContent = Math.round(bals[k] * 100) / 100;
       tr.querySelector('.val').textContent = money(vals[k]);
       tr.querySelector('.pct').textContent = total > 0 ? (vals[k] / total * 100).toFixed(1) + '%' : '–';
@@ -628,8 +635,9 @@ async function loadInventory() {
     const id = tr.dataset.id;
     tr.oninput = refreshValues;
     tr.querySelector('.s').onclick = async () => {
-      await fetch('/api/inventory/' + id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      const r = await fetch('/api/inventory/' + id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ quantity: tr.querySelector('.q').value, used_qty: tr.querySelector('.uq').value, avg_rate: tr.querySelector('.r').value, category_id: tr.querySelector('.cat').value, used_by: tr.querySelector('.ub').value, consumption_type: tr.querySelector('.ct').value }) });
+      if (!r.ok) return alert((await r.json().catch(() => ({}))).error || 'Could not save.');
       loadInventory();
     };
     tr.querySelector('.c').onclick = async () => {
@@ -818,7 +826,7 @@ const setAuthed = (v, who) => {
   $('accountWho').innerHTML = v && who ? `Signed in as<b>${esc(who.family_name)}</b><span>${esc(who.userid)}</span>` : '';
 };
 const refreshSession = () => fetch('/session').then((r) => r.json()).then((j) => { setAuthed(j.loggedIn, j); if (j.loggedIn) loadSettingsInit(); });
-const openLogin = (tab) => { pendingTab = tab || null; $('loginErr').textContent = ''; $('loginModal').classList.remove('hidden'); $('loginUser').focus(); };
+const openLogin = (tab, msg) => { pendingTab = tab || null; $('loginErr').textContent = ''; $('loginErr').style.color = ''; $('loginMsg').textContent = msg || ''; $('loginMsg').classList.toggle('hidden', !msg); $('loginModal').classList.remove('hidden'); $('loginUser').focus(); };
 $('loginShow').onchange = () => { $('loginPass').type = $('loginShow').checked ? 'text' : 'password'; };
 const closeLogin = () => { $('loginModal').classList.add('hidden'); $('loginPass').value = ''; $('loginShow').checked = false; $('loginShow').onchange(); };
 $('logout').onclick = async () => {
@@ -835,13 +843,54 @@ $('loginForm').onsubmit = async (e) => {
   e.preventDefault();
   const r = await fetch('/login', { method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ userid: $('loginUser').value.trim(), password: $('loginPass').value }) });
-  if (!r.ok) { $('loginErr').textContent = (await r.json().catch(() => ({}))).error || 'Login failed.'; return; }
+  if (!r.ok) {
+    const j = await r.json().catch(() => ({}));
+    $('loginErr').textContent = j.error || 'Login failed.';
+    if (j.code === 'pending') { // not activated yet: offer to send the link again
+      const a2 = document.createElement('a'); a2.textContent = ' Resend activation email'; a2.style.cssText = 'cursor:pointer;color:#2563eb;font-weight:600';
+      a2.onclick = async () => { const r2 = await post('/signup/resend', 'POST', { email: $('loginUser').value.trim() }); $('loginErr').style.color = r2.ok ? '#198754' : '#b00020'; $('loginErr').textContent = r2.ok ? 'Sent. Please check your inbox.' : ((await r2.json().catch(() => ({}))).error || 'Could not resend.'); };
+      $('loginErr').appendChild(a2);
+    } else $('loginErr').style.color = '';
+    return;
+  }
   // Offer to save the credentials in the browser's password manager (the form is submitted with fetch, so do it explicitly).
   if (($('loginSave').checked) && window.PasswordCredential) navigator.credentials.store(new PasswordCredential({ id: $('loginUser').value.trim(), password: $('loginPass').value, name: 'Smartscan' })).catch(() => {});
   await refreshSession(); closeLogin();
   if (pendingTab) showTab(pendingTab);
 };
 refreshSession();
+
+// Forgot password and reset (the emailed link opens the site as /?reset=<token>).
+const closeForgot = () => $('forgotModal').classList.add('hidden');
+$('toForgot').onclick = () => { closeLogin(); $('fgMsg').textContent = ''; $('fgEmail').value = $('loginUser').value.trim(); $('forgotModal').classList.remove('hidden'); $('fgEmail').focus(); };
+$('fgBack').onclick = () => { closeForgot(); openLogin(); };
+$('forgotClose').onclick = closeForgot;
+$('forgotModal').onclick = (e) => { if (e.target === $('forgotModal')) closeForgot(); };
+$('forgotForm').onsubmit = async (e) => {
+  e.preventDefault();
+  const r = await post('/forgot', 'POST', { email: $('fgEmail').value.trim() }), j = await r.json().catch(() => ({}));
+  $('fgMsg').style.color = r.ok ? '#198754' : '#b00020';
+  $('fgMsg').textContent = r.ok ? j.message : (j.error || 'Could not send the link.');
+};
+const resetToken = new URLSearchParams(location.search).get('reset');
+const closeReset = () => $('resetModal').classList.add('hidden');
+$('resetClose').onclick = closeReset;
+$('rsShow').onchange = () => ['rsPass', 'rsPass2'].forEach((id) => { $(id).type = $('rsShow').checked ? 'text' : 'password'; });
+$('resetForm').onsubmit = async (e) => {
+  e.preventDefault();
+  $('rsMsg').style.color = '#b00020';
+  if ($('rsPass').value.length < 8) return $('rsMsg').textContent = 'Password must be at least 8 characters.';
+  if ($('rsPass').value !== $('rsPass2').value) return $('rsMsg').textContent = 'Passwords do not match.';
+  const r = await post('/reset', 'POST', { token: resetToken, password: $('rsPass').value, confirm: $('rsPass2').value });
+  if (!r.ok) return $('rsMsg').textContent = (await r.json().catch(() => ({}))).error || 'Could not reset the password.';
+  closeReset(); openLogin(null, 'Password changed. Please log in with your new password.');
+};
+{ // act on ?reset= / ?activated= from emailed links, then clean the address bar
+  const q = new URLSearchParams(location.search);
+  if (resetToken) $('resetModal').classList.remove('hidden');
+  else if (q.has('activated')) openLogin(null, q.get('activated') === '1' ? 'Your account is activated. Please log in.' : 'This activation link is invalid, expired or already used. If you already activated, just log in; otherwise log in to get a new link.');
+  if (resetToken || q.has('activated')) history.replaceState(null, '', location.pathname);
+}
 
 // App-store badges: until the real store URLs are set in index.html (href), show a notice instead of a dead link.
 $('yr').textContent = new Date().getFullYear();
