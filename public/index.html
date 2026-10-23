@@ -126,15 +126,15 @@
   #logout { margin-left: auto; }
   #signup + #logout { margin-left: 0; }
   #signup:hover, #logout:hover { background: #fff; color: #031521; }
-  body.authed #signup { display: none; }
+  body.authed #signup, body.authed #logout, body.authed .pubmenu { display: none; }
   #accountWrap { display: none; margin-left: auto; }
   body.authed #accountWrap { display: block; }
   body.authed #accountWrap + #signup + #logout { margin-left: 0; }
-  #scanLink { display: none; }
-  body.authed #scanLink { display: block; }
+  #scanLink, .authmenu { display: none; }
+  body.authed #scanLink, body.authed .authmenu { display: block; }
   #scanLink.active { box-shadow: inset 0 -3px 0 var(--primary); }
   .dd-right { left: auto; right: 0; min-width: 0; padding: 10px; border: 1px solid #e5e7eb; }
-  .menu.open > .dd-right { display: grid; grid-template-columns: repeat(3, auto); gap: 4px 10px; }
+  .menu.open > .dd-right { display: grid; grid-template-columns: auto; gap: 4px 10px; }
   .dd-who { grid-column: 1 / -1; display: flex; align-items: baseline; gap: 8px; padding: 4px 12px 8px; margin-bottom: 4px; border-bottom: 1px solid #e5e7eb; font-size: 13px; color: #6b7280; }
   .dd-who:empty { display: none; }
   .dd-who b { color: #1f2937; font-size: 15px; }
@@ -142,6 +142,10 @@
   .dd-col { min-width: 150px; }
   .dd-col + .dd-col { border-left: 1px solid #e5e7eb; padding-left: 10px; }
   .dd-h { display: flex; align-items: center; gap: 6px; padding: 4px 12px 6px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; color: var(--primary-dk); white-space: nowrap; }
+  #ctForm label { display: block; margin: 8px 0; text-align: left; font-weight: 600; font-size: .9rem; }
+  #ctForm input, #ctForm select, #ctForm textarea { display: block; width: 100%; box-sizing: border-box; margin-top: 3px; }
+  #ctForm .bad { border-color: #b00020; }
+  .cur:not(:empty)::after { content: " "; white-space: pre; }
   .dd-ic { font-size: 13px; }
   .dd-right button { padding: 6px 12px; font-size: 14px; }
   #navToggle { display: none; margin-left: auto; background: transparent; border: 1px solid rgba(255, 255, 255, .6); color: #fff; border-radius: 6px; font-size: 1.3rem; line-height: 1; padding: 4px 10px; cursor: pointer; }
@@ -228,6 +232,9 @@
   section .subnav button { background: #fff; color: var(--primary); border: 1px solid var(--primary); }
   section .subnav button:hover { background: #e7f1ff; }
   section .subnav button.active { background: var(--primary); color: #fff; }
+  /* Beat the generic section-button hover (grey), which made the active pill unreadable (white text on grey). */
+  section .subnav button:not(.primary):not([data-tab]):hover { background: #e7f1ff; color: var(--primary-dk); border-color: var(--primary); }
+  section .subnav button.active:not(.primary):not([data-tab]):hover, section .subnav button.active:not(.primary):not([data-tab]) { background: var(--primary); color: #fff; }
   .primary { background: var(--primary); border-radius: 6px; font-weight: 600; transition: background .15s; }
   .primary:hover { background: var(--primary-dk); }
   label { font-weight: 600; color: #495057; }
@@ -287,6 +294,7 @@
   #signupModal .su-f { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
   #signupModal .su-four { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
   #signupModal input:not([type=checkbox]) { padding: 8px 10px; }
+  #signupModal select { padding: 8px 10px; }
   #signupModal .tip { font-size: .78rem; min-height: 0; }
   #signupModal .tip:empty { display: none; }
   #signupModal #suMembers { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; max-height: 148px; overflow-y: auto; padding: 2px; }
@@ -375,6 +383,8 @@
       <div id="suPane2" class="su-pane hidden">
         <div class="su-f"><label>Family name <input id="suFamily" maxlength="60" required></label>
           <small class="tip" id="tip_suFamily"></small></div>
+        <div class="su-f"><label>City of residence <select id="suCity" required><option value="">Select your city…</option></select></label>
+          <small class="tip" id="tip_suCity">Major metro cities in your country.</small></div>
         <div class="su-f"><label>Persons in the family <input id="suPersons" type="number" min="1" max="30" inputmode="numeric" required></label>
           <small class="tip" id="tip_suPersons"></small></div>
         <div class="su-f wide su-four">
@@ -389,6 +399,7 @@
         <div id="suMembers" class="wide"></div>
         <div class="suErr wide" id="suErr2"></div>
         <button type="button" id="suBack" style="padding:12px">Back</button>
+        <p class="wide" style="margin:0;font-size:.82rem;color:#6b7280;grid-column:1/-1">By signing up you agree to our <a href="/privacy.html" target="_blank" rel="noopener">Privacy Policy</a>.</p>
         <button class="primary" style="padding:12px">Sign up</button>
       </div>
       <p class="modal-switch">Already have an account? <a id="toLogin">Log in</a></p>
@@ -474,8 +485,23 @@
     <a class="brand" data-tab="home" href="#" title="Home"><span class="logo">&#9638;</span><span class="brand-text"><span class="brand-name">Smartscan<span class="dot">.</span></span><span class="tagline">Scan, Track &amp; Shop Smarter</span></span></a>
     <button id="navToggle" type="button" aria-label="Menu" aria-expanded="false">&#9776;</button>
     <div class="nav" id="mainNav">
-      <button class="mlink" id="scanLink" type="button" data-tab="scan">Scan new invoice</button>
-      <div class="menu">
+      <button class="mlink" id="scanLink" type="button" data-tab="scan">Scan New Invoice</button>
+      <div class="menu authmenu">
+        <button class="mbtn" id="analyticsMenu" type="button">Buying Analytics <i>&#9662;</i></button>
+        <div class="dd">
+          <button data-tab="consumption">Stock In Items</button>
+          <button data-tab="orders">Likely Next Orders</button>
+          <button data-tab="aistats">Reports</button>
+        </div>
+      </div>
+      <div class="menu authmenu">
+        <button class="mbtn" id="stockMenu" type="button">Stock Management <i>&#9662;</i></button>
+        <div class="dd">
+          <button data-tab="inventory">Current Stock of Items</button>
+          <button data-tab="invoices">Invoices Captured</button>
+        </div>
+      </div>
+      <div class="menu pubmenu">
         <button class="mbtn" type="button">Resources <i>&#9662;</i></button>
         <div class="dd">
           <button data-goto="how">How it works</button>
@@ -487,32 +513,21 @@
         <button class="mbtn" type="button">Company <i>&#9662;</i></button>
         <div class="dd">
           <button data-goto="about">About us</button>
-          <button data-goto="contact">Contact us</button>
+          <button id="feedbackLink" type="button">Feedback</button>
         </div>
       </div>
-      <button class="mlink" id="feedbackLink" type="button">Feedback</button>
+      <button class="mlink" type="button" data-goto="contact">Contact us</button>
     </div>
     <div class="menu" id="accountWrap">
-      <button class="mbtn" id="accountMenu" type="button">My Account <i>&#9662;</i></button>
+      <button class="mbtn" id="accountMenu" type="button">Settings <i>&#9662;</i></button>
       <div class="dd dd-right">
         <div id="accountWho" class="dd-who"></div>
         <div class="dd-col">
-          <div class="dd-h"><span class="dd-ic">&#9881;</span>Setup</div>
-          <button data-tab="setup">Settings</button>
+          <button data-tab="setup">Setup</button>
           <button data-tab="household">Household</button>
-          <button data-tab="buyers">Members</button>
+          <button data-tab="buyers">Buyer Members</button>
           <button data-tab="categories">Item Category</button>
-        </div>
-        <div class="dd-col">
-          <div class="dd-h"><span class="dd-ic">&#9636;</span>Stock Management</div>
-          <button data-tab="inventory">Household Stock</button>
-          <button data-tab="invoices">Invoices Captured</button>
-        </div>
-        <div class="dd-col">
-          <div class="dd-h"><span class="dd-ic">&#9650;</span>Household Stats</div>
-          <button data-tab="consumption">Stock In</button>
-          <button data-tab="orders">Likely Next Orders</button>
-          <button data-tab="aistats">AI Reports</button>
+          <button id="logoutItem" type="button" style="border-top:1px solid #e5e7eb;border-radius:0 0 8px 8px;margin-top:4px">Logout</button>
         </div>
       </div>
     </div>
@@ -584,7 +599,20 @@
       <p>This is only the beginning. In 2027 we plan to launch a series of new products, starting with <strong>Smartvids</strong>, a video capture technology built on purpose-designed hardware devices.</p>
       <a class="btn-line" href="/about.html" style="display:inline-block;margin-top:10px;padding:9px 22px;border-radius:999px;font-weight:700;text-decoration:none">Read more</a>
     </div>
-    <div class="card" id="contact"><h3>Contact us</h3><p>Questions or need help getting started? Reach out to your Smartscan account manager and we'll be glad to help.</p></div>
+    <div class="card" id="contact"><h3>Contact us</h3>
+      <p>Support, or questions about Smartscan? Send us a note and we'll get back to you.</p>
+      <form id="ctForm" novalidate>
+        <label>Name <input id="ctName" maxlength="100" autocomplete="name" required></label>
+        <label>Email <input id="ctEmail" type="email" maxlength="200" autocomplete="email" required></label>
+        <label>Category
+          <select id="ctCat" required><option value="">Select…</option><option>Support</option><option>Info on Smartscan</option><option>Other</option></select>
+        </label>
+        <label>Remarks <textarea id="ctRemarks" rows="4" maxlength="2000" required placeholder="How can we help?"></textarea></label>
+        <div id="ctRecaptcha" style="margin:8px 0"></div>
+        <div id="ctStatus" style="min-height:1.2em"></div>
+        <button class="primary" style="width:100%;padding:10px">Send message</button>
+      </form>
+    </div>
   </div>
 </section>
 
@@ -592,7 +620,6 @@
   <h2>Setup</h2>
   <div class="row">
     <label>Language <select id="setLang"></select></label>
-    <label>Currency <select id="setCur"></select></label>
   </div>
   <div class="row">
     <label>Unit Rate in Scan new invoice
@@ -623,6 +650,7 @@
   <div class="row">
     <label>Unique ID (your User ID) <input id="hhCode" readonly style="background:#f1f3f5"></label>
     <label>Family name <input id="hhName" maxlength="60"></label>
+    <label>City of residence <select id="hhCity"></select></label>
   </div>
   <div class="row">
     <label>No. of persons <input id="hhPersons" type="number" min="0"></label>
@@ -688,7 +716,7 @@
       <label>Printed total <input id="printed" type="number" step="0.01"></label>
     </div>
     <table>
-      <thead><tr><th>Description</th><th>Category</th><th>Used by</th><th>Stock In</th><th style="text-align:right">Qty</th><th>UOM</th><th style="text-align:right">MRP Rate</th><th style="text-align:right">Unit Rate</th><th style="text-align:right">Disc %</th><th style="text-align:right">Tax %</th><th style="text-align:right">Amount</th><th>Exist in Inventory?</th><th></th></tr></thead>
+      <thead><tr><th>Description</th><th>Category</th><th>Used by</th><th>Stock In</th><th style="text-align:right">Qty</th><th>UOM</th><th style="text-align:right"><span class="cur"></span>MRP Rate</th><th style="text-align:right"><span class="cur"></span>Unit Rate</th><th style="text-align:right">Disc %</th><th style="text-align:right">Tax %</th><th style="text-align:right"><span class="cur"></span>Amount</th><th>Exist in Inventory?</th><th></th></tr></thead>
       <tbody id="lines"></tbody>
     </table>
     <div class="row">
@@ -711,7 +739,7 @@
   <div id="invChart"></div>
   <p><input id="invSearch" type="search" placeholder="🔍 Search items (name or category)…" autocomplete="off" style="width:100%;max-width:360px"> <span id="invSearchCount"></span></p>
   <table>
-    <thead><tr><th>Item</th><th>Category</th><th>Used by</th><th>Stock In</th><th class="num">Qty</th><th>UOM</th><th class="num">Used qty</th><th class="num">Balance</th><th class="num">Avg rate</th><th class="num">Value</th><th class="num">% of total</th><th>Action</th></tr></thead>
+    <thead><tr><th>Item</th><th>Category</th><th>Used by</th><th>Stock In</th><th class="num">Qty</th><th>UOM</th><th class="num">Used qty</th><th class="num">Balance</th><th class="num"><span class="cur"></span>Avg rate</th><th class="num"><span class="cur"></span>Value</th><th class="num">% of total</th><th>Action</th></tr></thead>
     <tbody id="invRows"></tbody>
   </table>
   <div id="invPager" class="pager"></div>
@@ -720,14 +748,14 @@
 <section id="invoices" class="hidden">
   <p><input id="invoiceSearch" type="search" placeholder="🔍 Search invoices by item, category or vendor…" autocomplete="off" style="width:100%;max-width:360px"> <span id="invoiceSearchCount"></span></p>
   <table>
-    <thead><tr><th>#</th><th>Buyer</th><th>Purchased</th><th>Vendor</th><th>Date</th><th>Printed</th><th>Computed</th></tr></thead>
+    <thead><tr><th>#</th><th>Buyer</th><th>Purchased</th><th>Vendor</th><th>Date</th><th><span class="cur"></span>Printed</th><th><span class="cur"></span>Computed</th></tr></thead>
     <tbody id="invList"></tbody>
   </table>
   <div id="invListPager" class="pager"></div>
 </section>
 
 <section id="consumption" class="hidden">
-  <h2>Stock In</h2>
+  <h2>Stock In Items</h2>
   <div class="subnav">
     <button data-stat="composition" class="active">1. Item composition % (monthly)</button>
     <button data-stat="overstock">2. Overstocked items</button>
@@ -744,7 +772,7 @@
       <p id="compPeriod"></p>
       <div class="comp">
         <table>
-          <thead><tr><th>Item</th><th>Category</th><th>Unit</th><th class="num">Qty</th><th class="num">Value</th><th class="num">%</th></tr></thead>
+          <thead><tr><th>Item</th><th>Category</th><th>Unit</th><th class="num">Qty</th><th class="num"><span class="cur"></span>Value</th><th class="num">%</th></tr></thead>
           <tbody id="compRows"></tbody>
           <tfoot id="compFoot"></tfoot>
         </table>
@@ -780,7 +808,7 @@
     <p id="patPeriod"></p>
     <div class="comp">
       <table>
-        <thead><tr><th>Stock In pattern</th><th>Items</th><th class="num">Value</th><th class="num">%</th></tr></thead>
+        <thead><tr><th>Stock In pattern</th><th>Items</th><th class="num"><span class="cur"></span>Value</th><th class="num">%</th></tr></thead>
         <tbody id="patRows"></tbody>
         <tfoot id="patFoot"></tfoot>
       </table>
@@ -798,11 +826,11 @@
     <div class="comp">
       <div>
         <table>
-          <thead><tr><th>Channel</th><th class="num">Purchases</th><th class="num">Spend</th><th class="num">Share %</th><th class="num">Discount</th><th class="num">Effective discount %</th></tr></thead>
+          <thead><tr><th>Channel</th><th class="num">Purchases</th><th class="num"><span class="cur"></span>Spend</th><th class="num">Share %</th><th class="num"><span class="cur"></span>Discount</th><th class="num">Effective discount %</th></tr></thead>
           <tbody id="chChannels"></tbody>
         </table>
         <table>
-          <thead><tr><th>Vendor</th><th>Channel</th><th class="num">Purchases</th><th class="num">Spend</th><th class="num">Vendor share %</th><th class="num">Discount</th><th class="num">Effective discount %</th></tr></thead>
+          <thead><tr><th>Vendor</th><th>Channel</th><th class="num">Purchases</th><th class="num"><span class="cur"></span>Spend</th><th class="num">Vendor share %</th><th class="num"><span class="cur"></span>Discount</th><th class="num">Effective discount %</th></tr></thead>
           <tbody id="chRows"></tbody>
           <tfoot id="chFoot"></tfoot>
         </table>
@@ -827,7 +855,7 @@
   <div id="aiInsights"></div>
   <div id="aiShare"></div>
   <table id="aiTable">
-    <thead><tr><th>Item</th><th>Category</th><th>Type</th><th class="num">Bought</th><th class="num">Buys</th><th class="num">Avg days between buys</th><th class="num">Used</th><th class="num">Use / day</th><th class="num">Balance</th><th class="num">Days left</th><th class="num">Spend</th><th class="num">%</th><th>Status</th></tr></thead>
+    <thead><tr><th>Item</th><th>Category</th><th>Type</th><th class="num">Bought</th><th class="num">Buys</th><th class="num">Avg days between buys</th><th class="num">Used</th><th class="num">Use / day</th><th class="num">Balance</th><th class="num">Days left</th><th class="num"><span class="cur"></span>Spend</th><th class="num">%</th><th>Status</th></tr></thead>
     <tbody id="aiRows"></tbody>
   </table>
   <div id="aiWeekday"></div>
@@ -844,7 +872,7 @@
     <p><label>Select month <select id="orderMonth"></select></label></p>
     <p id="orderPeriod"></p>
     <table>
-      <thead><tr><th>Item</th><th>Category</th><th>Based on</th><th class="num">Purchased</th><th class="num">Consumed</th><th class="num">Balance</th><th class="num">Monthly need</th><th class="num">Order qty</th><th>UOM</th><th class="num">Est. cost</th><th>Status</th></tr></thead>
+      <thead><tr><th>Item</th><th>Category</th><th>Based on</th><th class="num">Purchased</th><th class="num">Consumed</th><th class="num">Balance</th><th class="num">Monthly need</th><th class="num">Order qty</th><th>UOM</th><th class="num"><span class="cur"></span>Est. cost</th><th>Status</th></tr></thead>
       <tbody id="orderRows"></tbody>
     </table>
   </div>
@@ -875,7 +903,7 @@
     <div class="fbot">
       <span>Copyright &copy;<span id="yr"></span> Smartscan</span>
       <a href="#" data-soon="Terms and Conditions">Terms and Conditions</a>
-      <a href="#" data-soon="Privacy Policy">Privacy Policy</a>
+      <a href="/privacy.html">Privacy Policy</a>
       <div class="social">
         <a href="#" data-soon="LinkedIn page" aria-label="LinkedIn"><svg viewBox="0 0 24 24" width="28" height="28"><path fill="currentColor" d="M4.500 3A2 2 0 1 0 4.500 7 2 2 0 0 0 4.500 3zM3 9h3v12H3zm6 0h2.900v1.700h.1c.4-.8 1.400-1.900 3.100-1.900 3.300 0 3.900 2.200 3.900 5V21h-3v-6c0-1.500 0-3.300-2-3.300s-2.300 1.500-2.300 3.200V21H9z"/></svg></a>
         <a href="#" data-soon="X page" aria-label="X"><svg viewBox="0 0 24 24" width="26" height="26"><path fill="currentColor" d="M17.800 3h3.100l-6.800 7.700L22 21h-6.200l-4.900-6.400L5.300 21H2.200l7.300-8.300L2 3h6.400l4.400 5.800zm-1.100 16.200h1.700L7.400 4.700H5.600z"/></svg></a>

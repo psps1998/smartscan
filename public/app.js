@@ -3,7 +3,7 @@ const money = (n) => (Number(n) || 0).toFixed(2);
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 let settings = { language: 'en', currency: 'INR', rate_includes_tax: false };
 // Money with the configured currency symbol, for headline totals.
-const fmt = (n) => { try { return new Intl.NumberFormat('en', { style: 'currency', currency: settings.currency }).format(Number(n) || 0); } catch { return money(n); } };
+const fmt = (n) => { try { return new Intl.NumberFormat('en', { style: 'currency', currency: settings.currency, minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(n) || 0); } catch { return money(n); } };
 const msg = (text, cls) => { $('scanMsg').innerHTML = text ? `<div class="msg ${cls}">${esc(text)}</div>` : ''; };
 
 const TABS = ['setup', 'household', 'buyers', 'categories', 'scan', 'inventory', 'invoices', 'consumption', 'orders', 'aistats'];
@@ -12,7 +12,8 @@ const showTab = (tab) => {
   if (TABS.includes(tab) && !authed) return openLogin(tab);
   ['home', ...TABS].forEach((t) => $(t).classList.toggle('hidden', t !== tab));
   document.querySelectorAll('.dd [data-tab]').forEach((x) => x.classList.toggle('active', x.dataset.tab === tab));
-  $('accountMenu').classList.toggle('active', TABS.includes(tab) && tab !== 'scan');
+  const grp = { accountMenu: ['setup', 'household', 'buyers', 'categories'], analyticsMenu: ['consumption', 'orders', 'aistats'], stockMenu: ['inventory', 'invoices'] };
+  for (const [id, tabs] of Object.entries(grp)) $(id).classList.toggle('active', tabs.includes(tab));
   $('scanLink').classList.toggle('active', tab === 'scan');
   if (tab === 'setup') loadSetup();
   if (tab === 'categories') loadCategories();
@@ -121,6 +122,8 @@ $('signup').onclick = () => {
   suTips(); suShowTab(1);
   $('signupFields').classList.remove('hidden'); $('signupDone').classList.add('hidden');
   $('signupModal').classList.remove('hidden'); $('suEmail').focus();
+  // City list for the country detected from the visitor's IP.
+  fetch('/signup/cities').then((r) => r.json()).then((j) => { $('suCity').innerHTML = '<option value="">Select your city…</option>' + j.cities.map((c) => `<option>${esc(c)}</option>`).join(''); }).catch(() => {});
 };
 $('signupClose').onclick = closeSignup;
 $('toLogin').onclick = () => { closeSignup(); openLogin(); };
@@ -134,6 +137,7 @@ $('signupForm').onsubmit = async (e) => {
   const bad = (id, msg) => { $(id).style.borderColor = '#b00020'; $(id).focus(); $('suErr2').textContent = msg; };
   const fam = $('suFamily').value.trim(), p = suNum('suPersons'), ad = suNum('suAdults'), ch = suNum('suChildren'), m = suNum('suMales'), f = suNum('suFemales');
   if (fam.length < 2) return bad('suFamily', 'Enter your family name (at least 2 characters).');
+  if (!$('suCity').value) return bad('suCity', 'Please choose your city of residence.');
   if (!(p >= 1 && p <= 30)) return bad('suPersons', 'Persons must be a number from 1 to 30.');
   if (ad === null || ch === null || ad + ch !== p) return bad('suAdults', `Adults + children must equal ${p}.`);
   if (m === null || f === null || m + f !== p) return bad('suMales', `Males + females must equal ${p}.`);
@@ -144,14 +148,12 @@ $('signupForm').onsubmit = async (e) => {
   if (new Set(members.map((x) => x.code)).size !== members.length) return $('suErr2').textContent = 'Member IDs must be unique.';
   $('suErr2').textContent = '';
   const r = await post('/signup', 'POST', { email: $('suEmail').value.trim(), password: $('suPass').value, confirm: $('suPass2').value,
-    family_name: fam, persons: p, adults: ad, children: ch, males: m, females: f, members });
+    family_name: fam, city: $('suCity').value, persons: p, adults: ad, children: ch, males: m, females: f, members });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) { if (r.status === 409) suShowTab(1); return (r.status === 409 ? $('suErr1') : $('suErr2')).textContent = j.error || 'Could not create the account.'; }
   localStorage.setItem('ss_userid', j.userid); // remembered in this browser
   $('signupFields').classList.add('hidden'); $('signupDone').classList.remove('hidden');
-  const em = $('suEmail').value.trim();
-  $('signupDone').innerHTML = `<div class="msg ok"><b>Account created.</b><br>We sent an activation link to <b>${esc(j.userid)}</b>. Click it to activate your account, then log in. The link works for 24 hours.<br><br>Not there? Check your spam folder.</div><div id="resendMsg" class="suErr"></div><button type="button" id="resendBtn" style="width:100%;padding:11px;margin-bottom:8px">Resend activation email</button><button type="button" class="primary" id="signupOk" style="width:100%;padding:11px">Go to login</button>`;
-  $('resendBtn').onclick = async () => { const r2 = await post('/signup/resend', 'POST', { email: em }); $('resendMsg').style.color = r2.ok ? '#198754' : '#b00020'; $('resendMsg').textContent = r2.ok ? 'Sent again. Please check your inbox.' : ((await r2.json().catch(() => ({}))).error || 'Could not resend.'); };
+  $('signupDone').innerHTML = `<div class="msg ok"><b>Account created.</b><br>Your User ID is <b>${esc(j.userid)}</b>. You can log in now.</div><button type="button" class="primary" id="signupOk" style="width:100%;padding:11px;margin-top:10px">Go to login</button>`;
   $('signupOk').onclick = () => { const id = j.userid; closeSignup(); openLogin(); $('loginUser').value = id; $('loginPass').focus(); };
   $('signupForm').reset();
 };
@@ -204,12 +206,12 @@ async function loadUsage() {
     <td>${esc(r.description)}</td><td>${esc(r.category)}</td><td>${esc(r.type)}</td>
     <td class="num">${r.purchased} ${esc(r.uom)}</td><td class="num">${r.purchases}</td><td class="num">${r.avg_gap_days ?? '–'}</td>
     <td class="num">${r.consumed}</td><td class="num">${r.per_day || '–'}</td><td class="num">${r.balance}</td><td class="num">${r.days_left ?? '–'}</td>
-    <td class="num">${money(r.spend)}</td><td class="num">${r.pct.toFixed(1)}%</td>
+    <td class="num">${fmt(r.spend)}</td><td class="num">${r.pct.toFixed(1)}%</td>
     <td><span class="badge ${AI_BADGE[r.status] || ''}">${esc(r.status)}</span></td></tr>`).join('')
     : '<tr><td colspan="13">No items are tagged for this pattern yet. Set the Stock In column in Inventory.</td></tr>';
   const spenders = j.rows.filter((r) => r.pct > 0).map((r) => ({ description: r.description, pct: r.pct }));
   $('aiShare').innerHTML = spenders.length ? '<h4>Share of spend</h4>' + stockBar(spenders) : '';
-  $('aiWeekday').innerHTML = j.rows.length ? weekdayBars('Spend by weekday of purchase', j.by_weekday.spend, 'spend', money)
+  $('aiWeekday').innerHTML = j.rows.length ? weekdayBars('Spend by weekday of purchase', j.by_weekday.spend, 'spend', fmt)
     + weekdayBars('Stock In entries by weekday', j.by_weekday.uses, '', String) : '';
 }
 $('aiDays').onchange = loadUsage;
@@ -227,7 +229,7 @@ async function loadOrderForm() {
   $('orderRows').innerHTML = j.rows.length ? j.rows.map((r) => `<tr>
     <td>${esc(r.description)}</td><td>${esc(r.category)}</td><td>${esc(r.basis)}</td>
     <td class="num">${r.purchased}</td><td class="num">${r.consumed}</td><td class="num">${r.balance}</td><td class="num">${r.monthly_need}</td>
-    <td class="num"><strong>${r.order_qty}</strong></td><td>${esc(r.uom)}</td><td class="num">${money(r.est_cost)}</td>
+    <td class="num"><strong>${r.order_qty}</strong></td><td>${esc(r.uom)}</td><td class="num">${fmt(r.est_cost)}</td>
     <td><span class="badge ${r.status === 'Restock' ? 'err' : 'warn'}">${esc(r.status)}</span></td></tr>`).join('')
     : '<tr><td colspan="11">Nothing to order: all items have enough stock for this month.</td></tr>';
 }
@@ -272,12 +274,12 @@ async function loadMonthReport(p, endpoint, empty) {
   const month = $(p + 'Month');
   if (!month.value) month.value = new Date().toISOString().slice(0, 7);
   const j = await (await fetch(`/api/stats/${endpoint}?month=${month.value}`)).json();
-  $(p + 'Period').textContent = `${monthLabel(j.month)} (${j.start} to ${j.end}) — total value ${money(j.total)}`;
+  $(p + 'Period').textContent = `${monthLabel(j.month)} (${j.start} to ${j.end}) — total value ${fmt(j.total)}`;
   $(p + 'Rows').innerHTML = j.items.length ? j.items.map((it, i) => `<tr>
     <td><span class="sw" style="display:inline-block;width:10px;height:10px;margin-right:6px;background:${i < 9 ? compColor(i) : '#94a3b8'}"></span>${esc(it.description)}</td>
-    <td>${esc(it.category)}</td><td>${esc(it.uom)}</td><td class="num">${it.quantity}</td><td class="num">${money(it.value)}</td><td class="num">${it.pct.toFixed(2)}%</td></tr>`).join('')
+    <td>${esc(it.category)}</td><td>${esc(it.uom)}</td><td class="num">${it.quantity}</td><td class="num">${fmt(it.value)}</td><td class="num">${it.pct.toFixed(2)}%</td></tr>`).join('')
     : `<tr><td colspan="6">${empty}</td></tr>`;
-  $(p + 'Foot').innerHTML = j.items.length ? `<tr><th colspan="4">Total</th><th class="num">${money(j.total)}</th><th class="num">100%</th></tr>` : '';
+  $(p + 'Foot').innerHTML = j.items.length ? `<tr><th colspan="4">Total</th><th class="num">${fmt(j.total)}</th><th class="num">100%</th></tr>` : '';
   $(p + 'Chart').innerHTML = j.items.length ? cylinderSvg(j.items) : '';
 }
 // Pie of each item's share (top 9 items, rest grouped as "Others"), with percentage labels on larger slices and a legend.
@@ -302,12 +304,12 @@ async function loadPattern() {
   if (!month.value) month.value = new Date().toISOString().slice(0, 7);
   const j = await (await fetch(`/api/stats/pattern?month=${month.value}`)).json();
   const label = (t) => t === 'unset' ? 'Not set' : (CONSUMPTION.find(([v]) => v === t) || [, t])[1];
-  $('patPeriod').textContent = `${monthLabel(j.month)} (${j.start} to ${j.end}) — total value ${money(j.total)}`;
+  $('patPeriod').textContent = `${monthLabel(j.month)} (${j.start} to ${j.end}) — total value ${fmt(j.total)}`;
   $('patRows').innerHTML = j.patterns.length ? j.patterns.map((p, i) => `<tr>
     <td><span style="display:inline-block;width:10px;height:10px;margin-right:6px;background:${compColor(i)}"></span>${esc(label(p.type))}</td>
-    <td>${p.items.map(esc).join(', ')}</td><td class="num">${money(p.value)}</td><td class="num">${p.pct.toFixed(2)}%</td></tr>`).join('')
+    <td>${p.items.map(esc).join(', ')}</td><td class="num">${fmt(p.value)}</td><td class="num">${p.pct.toFixed(2)}%</td></tr>`).join('')
     : '<tr><td colspan="4">No purchases recorded in this month.</td></tr>';
-  $('patFoot').innerHTML = j.patterns.length ? `<tr><th colspan="2">Total</th><th class="num">${money(j.total)}</th><th class="num">100%</th></tr>` : '';
+  $('patFoot').innerHTML = j.patterns.length ? `<tr><th colspan="2">Total</th><th class="num">${fmt(j.total)}</th><th class="num">100%</th></tr>` : '';
   $('patChart').innerHTML = j.patterns.length ? pieSvg(j.patterns.map((p) => ({ description: label(p.type), pct: p.pct }))) : '';
 }
 $('patMonth').onchange = loadPattern;
@@ -316,7 +318,7 @@ async function loadOverstock() {
   const month = $('ovMonth');
   if (!month.value) month.value = new Date().toISOString().slice(0, 7);
   const j = await (await fetch(`/api/stats/overstock?month=${month.value}`)).json();
-  $('ovPeriod').textContent = `${monthLabel(j.month)} (${j.start} to ${j.end}) — total value ${money(j.total)}`;
+  $('ovPeriod').textContent = `${monthLabel(j.month)} (${j.start} to ${j.end}) — total value ${fmt(j.total)}`;
   $('ovRows').innerHTML = j.items.length ? j.items.map((it, i) => `<tr>
     <td><span class="sw" style="display:inline-block;width:10px;height:10px;margin-right:6px;background:${i < 9 ? compColor(i) : '#94a3b8'}"></span>${esc(it.description)}</td>
     <td>${esc(it.category)}</td><td>${esc(it.uom)}</td><td class="num">${it.purchased}</td><td class="num">${it.consumed}</td><td class="num">${it.quantity}</td></tr>`).join('')
@@ -329,16 +331,16 @@ async function loadChannels() {
   if (!month.value) month.value = new Date().toISOString().slice(0, 7);
   const j = await (await fetch(`/api/stats/channels?month=${month.value}`)).json();
   const cap = (c) => c === 'online' ? 'Online' : 'Offline';
-  $('chPeriod').textContent = `${monthLabel(j.month)} (${j.start} to ${j.end}) — ${j.purchases} purchase(s), total spend ${money(j.total)}`;
-  $('chChannels').innerHTML = j.channels.length ? j.channels.map((c) => `<tr><td>${cap(c.channel)}</td><td class="num">${c.purchases}</td><td class="num">${money(c.spend)}</td>
-    <td class="num">${c.pct.toFixed(2)}%</td><td class="num">${money(c.discount)}</td><td class="num">${c.discount_pct.toFixed(2)}%</td></tr>`).join('')
+  $('chPeriod').textContent = `${monthLabel(j.month)} (${j.start} to ${j.end}) — ${j.purchases} purchase(s), total spend ${fmt(j.total)}`;
+  $('chChannels').innerHTML = j.channels.length ? j.channels.map((c) => `<tr><td>${cap(c.channel)}</td><td class="num">${c.purchases}</td><td class="num">${fmt(c.spend)}</td>
+    <td class="num">${c.pct.toFixed(2)}%</td><td class="num">${fmt(c.discount)}</td><td class="num">${c.discount_pct.toFixed(2)}%</td></tr>`).join('')
     : '<tr><td colspan="6">No purchases recorded in this month.</td></tr>';
   $('chRows').innerHTML = j.vendors.length ? j.vendors.map((v, i) => `<tr>
     <td><span style="display:inline-block;width:10px;height:10px;margin-right:6px;background:${i < 9 ? compColor(i) : '#94a3b8'}"></span>${esc(v.vendor)}</td>
-    <td>${cap(v.channel)}</td><td class="num">${v.purchases}</td><td class="num">${money(v.spend)}</td><td class="num">${v.pct.toFixed(2)}%</td>
-    <td class="num">${money(v.discount)}</td><td class="num">${v.discount_pct.toFixed(2)}%</td></tr>`).join('')
+    <td>${cap(v.channel)}</td><td class="num">${v.purchases}</td><td class="num">${fmt(v.spend)}</td><td class="num">${v.pct.toFixed(2)}%</td>
+    <td class="num">${fmt(v.discount)}</td><td class="num">${v.discount_pct.toFixed(2)}%</td></tr>`).join('')
     : '<tr><td colspan="7">No purchases recorded in this month.</td></tr>';
-  $('chFoot').innerHTML = j.vendors.length ? `<tr><th colspan="2">Total</th><th class="num">${j.purchases}</th><th class="num">${money(j.total)}</th><th class="num">100%</th><th></th><th></th></tr>` : '';
+  $('chFoot').innerHTML = j.vendors.length ? `<tr><th colspan="2">Total</th><th class="num">${j.purchases}</th><th class="num">${fmt(j.total)}</th><th class="num">100%</th><th></th><th></th></tr>` : '';
   const slices = j.vendors.filter((v) => v.pct > 0).map((v) => ({ description: `${v.vendor} (${cap(v.channel).toLowerCase()})`, pct: v.pct }));
   $('chChart').innerHTML = slices.length ? pieSvg(slices) : '';
 }
@@ -442,7 +444,7 @@ function recalc() {
   $('total').textContent = fmt(total);
   const printed = parseFloat($('printed').value);
   $('mismatch').innerHTML = printed && Math.abs(printed - total) > 0.01
-    ? `<div class="msg warn">Printed total (${money(printed)}) differs from computed (${money(total)}) — a line was misread.</div>` : '';
+    ? `<div class="msg warn">Printed total (${fmt(printed)}) differs from computed (${fmt(total)}) — a line was misread.</div>` : '';
 }
 $('printed').oninput = $('invDiscount').oninput = $('invTax').oninput = recalc;
 
@@ -568,7 +570,7 @@ $('save').onclick = async () => {
   });
   const j = await r.json();
   if (!r.ok) return msg(j.error, 'err');
-  msg(`Saved invoice #${j.id} (value ${money(j.computed_total)}). Inventory updated.`, 'ok');
+  msg(`Saved invoice #${j.id} (value ${fmt(j.computed_total)}). Inventory updated.`, 'ok');
   $('review').classList.add('hidden'); $('file').value = '';
 };
 
@@ -621,7 +623,7 @@ async function loadInventory() {
       uq.title = over ? `Used qty cannot be more than Qty (${parseFloat(tr.querySelector('.q').value) || 0})` : '';
       tr.querySelector('.s').disabled = over; tr.querySelector('.s').title = over ? uq.title : 'Save';
       tr.querySelector('.bal').textContent = Math.round(bals[k] * 100) / 100;
-      tr.querySelector('.val').textContent = money(vals[k]);
+      tr.querySelector('.val').textContent = fmt(vals[k]);
       tr.querySelector('.pct').textContent = total > 0 ? (vals[k] / total * 100).toFixed(1) + '%' : '–';
     });
     $('invValue').textContent = fmt(total);
@@ -672,21 +674,18 @@ const flash = (id, text, cls) => { $(id).innerHTML = text ? `<div class="msg ${c
 const HH_FIELDS = { hhPersons: 'persons', hhChildren: 'children', hhAdults: 'adults', hhMales: 'males', hhFemales: 'females' };
 
 const LANG_NAMES = { en: 'English', hi: 'हिन्दी (Hindi)', mr: 'मराठी (Marathi)', es: 'Español', fr: 'Français', de: 'Deutsch' };
-const CUR_NAMES = { USD: 'US Dollar (USD)', GBP: 'Pound (GBP)', EUR: 'Euro (EUR)', AUD: 'Australian Dollar (AUD)', CAD: 'Canadian Dollar (CAD)', JPY: 'Japanese Yen (JPY)', SGD: 'Singapore Dollar (SGD)', INR: 'Indian Rupee (INR)' };
 async function loadSetup() {
   const j = await (await fetch('/api/settings')).json();
   settings = j.settings;
   $('setLang').innerHTML = j.languages.map((l) => `<option value="${l}">${LANG_NAMES[l] || l}</option>`).join('');
-  $('setCur').innerHTML = j.currencies.map((c) => `<option value="${c}">${CUR_NAMES[c] || c}</option>`).join('');
   $('setLang').value = settings.language;
-  $('setCur').value = settings.currency;
   $('setTax').value = settings.rate_includes_tax ? '1' : '0';
   flash('setMsg', '');
 }
 $('setSave').onclick = async () => {
-  const r = await post('/api/settings', 'PUT', { language: $('setLang').value, currency: $('setCur').value, rate_includes_tax: $('setTax').value === '1' });
+  const r = await post('/api/settings', 'PUT', { language: $('setLang').value, rate_includes_tax: $('setTax').value === '1' });
   const j = await r.json();
-  if (r.ok) { settings = j.settings; recalc(); }
+  if (r.ok) { settings = j.settings; recalc(); showCur(); }
   flash('setMsg', r.ok ? 'Settings saved.' : j.error, r.ok ? 'ok' : 'err');
 };
 $('pwShow').onchange = () => ['pwCur', 'pwNew', 'pwNew2'].forEach((id) => { $(id).type = $('pwShow').checked ? 'text' : 'password'; });
@@ -698,20 +697,27 @@ $('pwForm').onsubmit = async (e) => {
   if (r.ok) { $('pwForm').reset(); $('pwShow').onchange(); }
   flash('pwMsg', r.ok ? 'Password changed. Use it next time you log in.' : j.error || 'Could not change password.', r.ok ? 'ok' : 'err');
 };
-const loadSettingsInit = () => fetch('/api/settings').then((r) => r.json()).then((j) => { if (j.settings) { settings = j.settings; recalc(); } });
+const loadSettingsInit = () => fetch('/api/settings').then((r) => r.json()).then((j) => { if (j.settings) { settings = j.settings; recalc(); showCur(); } });
+// Currency symbol of the account, shown before money column headers (<span class="cur">).
+const curSym = () => {
+  try { return new Intl.NumberFormat('en', { style: 'currency', currency: settings.currency, currencyDisplay: 'narrowSymbol' }).formatToParts(0).find((p) => p.type === 'currency').value; } catch { return settings.currency; }
+};
+const showCur = () => document.querySelectorAll('.cur').forEach((e) => { e.textContent = curSym(); });
 
 async function loadHousehold() {
   const j = await (await fetch('/api/household')).json(), h = j.household;
   $('hhAges').innerHTML = j.age_group_labels.map((g) => `<label>${g}<input data-age="${g}" type="number" min="0" value="${h?.age_groups[g] ?? 0}"></label>`).join('');
   $('hhCode').value = j.userid; // the household's Unique ID is the account's User ID
   $('hhName').value = h?.family_name || j.family_name;
+  $('hhCity').innerHTML = (h?.city ? '' : '<option value="">Select your city…</option>') + j.cities.map((c) => `<option>${esc(c)}</option>`).join('');
+  $('hhCity').value = h?.city || '';
   for (const [id, k] of Object.entries(HH_FIELDS)) $(id).value = h?.[k] ?? 0;
   flash('hhMsg', '');
 }
 $('hhSave').onclick = async () => {
   const age_groups = {};
   $('hhAges').querySelectorAll('input').forEach((i) => { age_groups[i.dataset.age] = i.value; });
-  const body = { family_name: $('hhName').value, age_groups };
+  const body = { family_name: $('hhName').value, city: $('hhCity').value, age_groups };
   for (const [id, k] of Object.entries(HH_FIELDS)) body[k] = $(id).value;
   const r = await post('/api/household', 'PUT', body);
   flash('hhMsg', r.ok ? 'Household saved.' : (await r.json()).error, r.ok ? 'ok' : 'err');
@@ -789,7 +795,7 @@ $('invoiceSearch').oninput = () => filterInvoices(true);
 async function loadInvoices() {
   const rows = await (await fetch('/api/invoices')).json();
   $('invList').innerHTML = rows.map((i) => `<tr class="inv" data-id="${i.id}" data-text="${esc(((i.items_text || '') + ' ' + (i.vendor || '')).toLowerCase())}" style="cursor:pointer" title="Click to show items"><td>▸ ${i.id}</td><td>${esc(i.buyer_code ? i.buyer_code + ' · ' + i.buyer_name : '')}</td><td>${i.channel === 'online' ? 'Online' + (i.provider ? ' · ' + esc(i.provider) : '') : 'Offline'}</td><td>${esc(i.vendor)}</td><td>${esc(i.invoice_date)}</td>
-    <td class="num">${i.printed_total == null ? '' : money(i.printed_total)}</td><td class="num">${money(i.computed_total)}</td></tr>`).join('');
+    <td class="num">${i.printed_total == null ? '' : fmt(i.printed_total)}</td><td class="num">${fmt(i.computed_total)}</td></tr>`).join('');
   filterInvoices(true);
   $('invList').querySelectorAll('tr.inv').forEach((tr) => tr.onclick = async () => {
     const open = tr.nextElementSibling?.classList.contains('detail');
@@ -799,10 +805,10 @@ async function loadInvoices() {
     d.className = 'detail';
     const cap = (s) => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
     const ctLabel = (v) => (CONSUMPTION.find(([k]) => k === v) || [, ''])[1];
-    d.innerHTML = `<td colspan="7"><table><thead><tr><th>Description</th><th>Category</th><th>Used by</th><th>Stock In</th><th class="num">Qty</th><th>UOM</th><th class="num">Qty consumed</th><th>Date consumed</th><th class="num">MRP Rate</th><th class="num">Unit Rate</th><th class="num">Disc %</th><th class="num">Tax %</th><th class="num">Amount</th><th></th></tr></thead><tbody>${
-      inv.items.map((x) => `<tr data-item="${x.id}"${searchWords().length && searchWords().every((w) => (x.description + ' ' + (x.category || '')).toLowerCase().includes(w)) ? ' style="background:#fff3b0"' : ''}><td>${esc(x.description)}</td><td>${esc(x.category || '')}</td><td>${esc(cap(x.used_by))}</td><td>${esc(ctLabel(x.consumption_type))}</td><td class="num">${x.quantity}</td><td>${esc(x.uom)}</td><td><input class="cq" type="number" step="any" min="0" max="${x.quantity}" value="${x.used_qty}"></td><td><input class="cd" type="date" value="${esc(x.used_date || '')}"></td><td class="num">${x.mrp ? money(x.mrp) : ''}</td><td class="num">${money(x.rate)}</td><td class="num">${x.discount_pct || 0}</td><td class="num">${x.tax_pct || 0}</td><td class="num">${money(x.amount)}</td><td><button class="cs">Save</button> <span class="cm"></span></td></tr>`).join('')
-      + (inv.discount ? `<tr><td colspan="12" class="num">Invoice discount</td><td class="num">-${money(inv.discount)}</td><td></td></tr>` : '')
-      + (inv.tax ? `<tr><td colspan="12" class="num">Invoice tax</td><td class="num">+${money(inv.tax)}</td><td></td></tr>` : '')
+    d.innerHTML = `<td colspan="7"><table><thead><tr><th>Description</th><th>Category</th><th>Used by</th><th>Stock In</th><th class="num">Qty</th><th>UOM</th><th class="num">Qty consumed</th><th>Date consumed</th><th class="num"><span class="cur">${curSym()}</span>MRP Rate</th><th class="num"><span class="cur">${curSym()}</span>Unit Rate</th><th class="num">Disc %</th><th class="num">Tax %</th><th class="num"><span class="cur">${curSym()}</span>Amount</th><th></th></tr></thead><tbody>${
+      inv.items.map((x) => `<tr data-item="${x.id}"${searchWords().length && searchWords().every((w) => (x.description + ' ' + (x.category || '')).toLowerCase().includes(w)) ? ' style="background:#fff3b0"' : ''}><td>${esc(x.description)}</td><td>${esc(x.category || '')}</td><td>${esc(cap(x.used_by))}</td><td>${esc(ctLabel(x.consumption_type))}</td><td class="num">${x.quantity}</td><td>${esc(x.uom)}</td><td><input class="cq" type="number" step="any" min="0" max="${x.quantity}" value="${x.used_qty}"></td><td><input class="cd" type="date" value="${esc(x.used_date || '')}"></td><td class="num">${x.mrp ? fmt(x.mrp) : ''}</td><td class="num">${fmt(x.rate)}</td><td class="num">${x.discount_pct || 0}</td><td class="num">${x.tax_pct || 0}</td><td class="num">${fmt(x.amount)}</td><td><button class="cs">Save</button> <span class="cm"></span></td></tr>`).join('')
+      + (inv.discount ? `<tr><td colspan="12" class="num">Invoice discount</td><td class="num">-${fmt(inv.discount)}</td><td></td></tr>` : '')
+      + (inv.tax ? `<tr><td colspan="12" class="num">Invoice tax</td><td class="num">+${fmt(inv.tax)}</td><td></td></tr>` : '')
       || '<tr><td colspan="14">No items</td></tr>'}</tbody></table></td>`;
     d.querySelectorAll('button.cs').forEach((b) => b.onclick = async () => {
       const row = b.closest('tr'), msg = row.querySelector('.cm'), cq = row.querySelector('.cq');
@@ -819,11 +825,17 @@ async function loadInvoices() {
   });
 }
 
+const notice = (msg) => {
+  const n = document.createElement('div');
+  n.textContent = msg;
+  n.style.cssText = 'position:fixed;top:84px;left:50%;transform:translateX(-50%);z-index:90;background:#0b5ed7;color:#fff;padding:12px 20px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.3);font-weight:600;max-width:90vw;cursor:pointer';
+  n.onclick = () => n.remove(); setTimeout(() => n.remove(), 8000); document.body.appendChild(n);
+};
 // --- Login state: the landing page is public; app screens need a login (modal, no page change). ---
 let authed = false, pendingTab = null;
 const setAuthed = (v, who) => {
   authed = v; document.body.classList.toggle('authed', v); $('logout').textContent = v ? 'Logout' : 'Login';
-  $('accountWho').innerHTML = v && who ? `Signed in as<b>${esc(who.family_name)}</b><span>${esc(who.userid)}</span>` : '';
+  $('accountWho').innerHTML = v && who ? `Signed in as<b>${esc(who.family_name)}</b>` : '';
 };
 const refreshSession = () => fetch('/session').then((r) => r.json()).then((j) => { setAuthed(j.loggedIn, j); if (j.loggedIn) loadSettingsInit(); });
 const openLogin = (tab, msg) => { pendingTab = tab || null; $('loginErr').textContent = ''; $('loginErr').style.color = ''; $('loginMsg').textContent = msg || ''; $('loginMsg').classList.toggle('hidden', !msg); $('loginModal').classList.remove('hidden'); $('loginUser').focus(); };
@@ -836,6 +848,7 @@ $('logout').onclick = async () => {
   setAuthed(false);
   if ($('home').classList.contains('hidden')) showTab('home');
 };
+$('logoutItem').onclick = $('logout').onclick;
 $('loginClose').onclick = closeLogin;
 $('loginModal').onclick = (e) => { if (e.target === $('loginModal')) closeLogin(); };
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeLogin(); });
@@ -856,7 +869,16 @@ $('loginForm').onsubmit = async (e) => {
   // Offer to save the credentials in the browser's password manager (the form is submitted with fetch, so do it explicitly).
   if (($('loginSave').checked) && window.PasswordCredential) navigator.credentials.store(new PasswordCredential({ id: $('loginUser').value.trim(), password: $('loginPass').value, name: 'Smartscan' })).catch(() => {});
   await refreshSession(); closeLogin();
-  if (pendingTab) showTab(pendingTab);
+  if (pendingTab) return showTab(pendingTab);
+  // Fresh login: open Stock In Items when the member has scanned data, otherwise invite them to scan.
+  const inv = await fetch('/api/invoices').then((r) => r.json()).catch(() => []);
+  if (Array.isArray(inv) && inv.length) {
+    // Always land on tab 1 (Item composition), even if another tab was open in an earlier session.
+    document.querySelectorAll('#consumption .subnav button').forEach((x) => x.classList.toggle('active', x.dataset.stat === 'composition'));
+    document.querySelectorAll('#consumption .statpane').forEach((p) => p.classList.toggle('hidden', p.id !== 'stat-composition'));
+    showTab('consumption');
+  }
+  else { showTab('scan'); notice('Welcome! Start your first scan: upload or photograph a purchase invoice below.'); }
 };
 refreshSession();
 
@@ -898,3 +920,31 @@ document.querySelectorAll('a[data-soon]').forEach((a) => a.addEventListener('cli
 document.querySelectorAll('a.store').forEach((a) => a.addEventListener('click', (e) => {
   if (a.getAttribute('href') === '#') { e.preventDefault(); alert(a.dataset.store + ' listing coming soon.'); }
 }));
+
+// --- Contact form (public): validation + captcha, posted to /contact ---
+let ctWidget = null;
+// Google reCAPTCHA v2: the server hands out the site key; the widget is rendered once Google's script has loaded.
+fetch('/contact/config').then((r) => r.json()).then((c) => {
+  if (!c.recaptchaSiteKey) return;
+  window.ctRecaptchaReady = () => { ctWidget = grecaptcha.render('ctRecaptcha', { sitekey: c.recaptchaSiteKey }); };
+  const sc = document.createElement('script'); sc.src = 'https://www.google.com/recaptcha/api.js?onload=ctRecaptchaReady&render=explicit'; sc.async = true; document.head.appendChild(sc);
+}).catch(() => {});
+$('ctForm').onsubmit = async (e) => {
+  e.preventDefault();
+  const v = { name: $('ctName').value.trim(), email: $('ctEmail').value.trim(), category: $('ctCat').value, remarks: $('ctRemarks').value.trim() };
+  const rc = window.grecaptcha && ctWidget !== null ? grecaptcha.getResponse(ctWidget) : '';
+  const bad = [];
+  if (v.name.length < 2) bad.push('ctName');
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.email)) bad.push('ctEmail');
+  if (!v.category) bad.push('ctCat');
+  if (v.remarks.length < 10) bad.push('ctRemarks');
+  ['ctName', 'ctEmail', 'ctCat', 'ctRemarks'].forEach((id) => $(id).classList.toggle('bad', bad.includes(id)));
+  const say = (m, ok) => { $('ctStatus').innerHTML = `<div class="msg ${ok ? 'ok' : 'err'}">${esc(m)}</div>`; };
+  if (bad.length) { $(bad[0]).focus(); return say('Please fill in every field correctly (remarks: at least 10 characters).'); }
+  if (!rc) return say('Please tick "I\'m not a robot".');
+  const r = await fetch('/contact', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...v, recaptcha: rc }) });
+  const j = await r.json().catch(() => ({}));
+  if (r.ok) { $('ctForm').reset(); say('Thank you! Your message has been sent. We will reply by email.', true); }
+  else say(j.error || 'Could not send your message.', false);
+  if (ctWidget !== null) grecaptcha.reset(ctWidget);
+};

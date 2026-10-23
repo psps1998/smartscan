@@ -114,6 +114,23 @@ const COUNTRY_DEFAULTS = {
   DE: ['de', 'EUR'], AT: ['de', 'EUR'], FR: ['fr', 'EUR'], ES: ['es', 'EUR'], MX: ['es', 'USD'], AR: ['es', 'USD'],
   ...Object.fromEntries(EUR.filter((c) => !['AT'].includes(c)).map((c) => [c, ['en', 'EUR']])),
 };
+// Major metro cities per country, offered as the family's city of residence ('Other' is always available).
+const METROS = {
+  IN: ['Mumbai', 'Delhi NCR', 'Bengaluru', 'Hyderabad', 'Chennai', 'Kolkata', 'Pune', 'Ahmedabad', 'Surat', 'Jaipur', 'Lucknow', 'Nagpur'],
+  US: ['New York', 'Los Angeles', 'Chicago', 'Houston', 'Phoenix', 'Philadelphia', 'San Antonio', 'San Diego', 'Dallas', 'San Jose', 'Austin', 'San Francisco', 'Seattle', 'Boston', 'Atlanta', 'Miami'],
+  GB: ['London', 'Birmingham', 'Manchester', 'Glasgow', 'Liverpool', 'Leeds', 'Edinburgh', 'Bristol'],
+  AU: ['Sydney', 'Melbourne', 'Brisbane', 'Perth', 'Adelaide', 'Canberra'],
+  CA: ['Toronto', 'Montreal', 'Vancouver', 'Calgary', 'Edmonton', 'Ottawa'],
+  SG: ['Singapore'],
+  JP: ['Tokyo', 'Osaka', 'Nagoya', 'Yokohama', 'Sapporo', 'Fukuoka', 'Kyoto'],
+  DE: ['Berlin', 'Hamburg', 'Munich', 'Cologne', 'Frankfurt', 'Stuttgart'],
+  FR: ['Paris', 'Marseille', 'Lyon', 'Toulouse', 'Nice'],
+  ES: ['Madrid', 'Barcelona', 'Valencia', 'Seville'],
+  MX: ['Mexico City', 'Guadalajara', 'Monterrey'],
+  AR: ['Buenos Aires', 'Cordoba', 'Rosario'],
+};
+const citiesFor = (cc) => [...(METROS[cc] || []), 'Other'];
+const ALL_CITIES = new Set(Object.keys(METROS).flatMap(citiesFor));
 const countryDefaults = (cc) => COUNTRY_DEFAULTS[cc] || ['en', 'USD'];
 // Country from the caller's IP (ipwho.is, 2 s timeout); falls back to the browser's language region, then India.
 async function detectCountry(req) {
@@ -172,7 +189,7 @@ const verifyPassword = (pw, stored) => {
   return a.length === b.length && timingSafeEqual(a, b);
 };
 const DUMMY_HASH = hashPassword(randomBytes(8).toString('hex')); // compared against when the User ID is unknown, so timing doesn't reveal it
-const userRow = (id) => db.prepare('SELECT userid, family_name, email, password_hash, status FROM users WHERE userid = ? COLLATE NOCASE').get(String(id ?? '').trim());
+const userRow = (id) => db.prepare('SELECT userid, family_name, email, password_hash, status, country FROM users WHERE userid = ? COLLATE NOCASE').get(String(id ?? '').trim());
 
 // --- Email links: activation (24 h) and password reset (1 h). Only a sha256 of each token is stored; a token works once. ---
 db.exec('CREATE TABLE IF NOT EXISTS email_tokens (token_hash TEXT PRIMARY KEY, userid TEXT NOT NULL, purpose TEXT NOT NULL, expires_at INTEGER NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP)');
@@ -269,6 +286,7 @@ CREATE TABLE households (owner TEXT PRIMARY KEY, code TEXT, family_name TEXT, pe
   if (o) console.log(`Existing data moved to account "${o}".`);
 }
 migrateToAccounts();
+try { db.exec('ALTER TABLE households ADD COLUMN city TEXT'); } catch {}
 
 const sessionCookie = (req) => {
   const m = /(?:^|;\s*)ss_session=([^;]+)/.exec(req.headers.cookie || '');
@@ -324,11 +342,44 @@ app.post('/feedback', (req, res) => {
   db.prepare('INSERT INTO feedback (rating, message, email) VALUES (?, ?, ?)').run(rating, message, email || null);
   res.json({ ok: true });
 });
+// Public contact form (no login): Google reCAPTCHA v2 (RECAPTCHA_SITE_KEY / RECAPTCHA_SECRET), stored in contact_messages and mailed to info@ and support@.
+db.exec('CREATE TABLE IF NOT EXISTS contact_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT DEFAULT CURRENT_TIMESTAMP, name TEXT NOT NULL, email TEXT NOT NULL, category TEXT NOT NULL, remarks TEXT NOT NULL)');
+const CONTACT_TO = ['info@smartscan.in', 'support@smartscan.in'], CONTACT_CATS = ['Support', 'Info on Smartscan', 'Other'];
+const contactHits = new Map(); // ip -> [timestamps]
+const { RECAPTCHA_SITE_KEY, RECAPTCHA_SECRET } = process.env;
+app.get('/contact/config', (req, res) => res.json({ recaptchaSiteKey: RECAPTCHA_SITE_KEY && RECAPTCHA_SECRET ? RECAPTCHA_SITE_KEY : null }));
+const recaptchaOk = async (response, ip) => {
+  if (!response) return false;
+  try {
+    const r = await fetch('https://www.google.com/recaptcha/api/siteverify', { method: 'POST', body: new URLSearchParams({ secret: RECAPTCHA_SECRET, response: String(response), remoteip: ip || '' }) });
+    return (await r.json()).success === true;
+  } catch (e) { console.error('recaptcha verify failed:', e.message); return false; }
+};
+app.post('/contact', async (req, res) => {
+  const now = Date.now(), hits = (contactHits.get(req.ip) || []).filter((t) => now - t < 3600000);
+  if (hits.length >= 5) return res.status(429).json({ error: 'Too many messages. Please try again later.' });
+  const clean = (v, n) => String(v || '').replace(/\s+/g, ' ').trim().slice(0, n);
+  const name = clean(req.body?.name, 100), email = clean(req.body?.email, 200).toLowerCase(), category = String(req.body?.category || ''), remarks = String(req.body?.remarks || '').trim().slice(0, 2000);
+  if (name.length < 2) return res.status(400).json({ error: 'Please enter your name.' });
+  if (!EMAIL_RE.test(email)) return res.status(400).json({ error: 'Enter a valid email address.' });
+  if (!CONTACT_CATS.includes(category)) return res.status(400).json({ error: 'Please choose a category.' });
+  if (remarks.length < 10) return res.status(400).json({ error: 'Please write a few words in Remarks (at least 10 characters).' });
+  if (!RECAPTCHA_SITE_KEY || !RECAPTCHA_SECRET) return res.status(503).json({ error: 'The contact form is not available right now.' });
+  if (!(await recaptchaOk(req.body?.recaptcha, req.ip))) return res.status(400).json({ error: 'Please tick "I\'m not a robot" and try again.' });
+  contactHits.set(req.ip, [...hits, now]);
+  db.prepare('INSERT INTO contact_messages (name, email, category, remarks) VALUES (?, ?, ?, ?)').run(name, email, category, remarks);
+  try {
+    await sendMail({ to: CONTACT_TO.join(', '), replyTo: `"${name.replace(/"/g, '')}" <${email}>`, subject: `[Smartscan contact] ${category} - ${name}`,
+      text: `Name: ${name}\nEmail: ${email}\nCategory: ${category}\n\n${remarks}\n` });
+  } catch (e) { console.error('contact mail failed (message is saved in contact_messages):', e.message); }
+  res.json({ ok: true });
+});
 mountAdmin(app, db); // /admin: database management dashboard (own login, see admin/routes.js)
-// Public signup. The account is active straight away. Email activation is a planned later step: create it as 'pending' there and activate it from the emailed link.
+// Public signup. Accounts are active straight away for now (email activation is switched off): to turn it back on, insert as 'pending' and call emailLink(..., 'activate') below.
 const signupHits = new Map(); // ip -> [timestamps]
 // The User ID is the account's email address (lowercased). Email activation is still to come.
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+app.get('/signup/cities', async (req, res) => { const country = await detectCountry(req); res.json({ country, cities: citiesFor(country) }); });
 app.get('/signup/email', (req, res) => {
   const e = String(req.query.email || '').trim().toLowerCase();
   res.json({ valid: EMAIL_RE.test(e), available: EMAIL_RE.test(e) && !db.prepare('SELECT 1 FROM users WHERE userid = ? COLLATE NOCASE OR email = ?').get(e, e) });
@@ -347,6 +398,8 @@ app.post('/signup', async (req, res) => {
   if (persons < 1 || persons > 30) return res.status(400).json({ error: 'Persons must be between 1 and 30.' });
   if (adults + children !== persons) return res.status(400).json({ error: `Adults + children (${adults + children}) must equal persons (${persons}).` });
   if (males + females !== persons) return res.status(400).json({ error: `Males + females (${males + females}) must equal persons (${persons}).` });
+  const city = String(b.city || '').trim();
+  if (!ALL_CITIES.has(city)) return res.status(400).json({ error: 'Please choose your city of residence.' });
   if (!members.length) return res.status(400).json({ error: 'Add at least one buyer member.' });
   if (members.length > persons) return res.status(400).json({ error: `Buyer members cannot exceed the ${persons} persons in the family.` });
   if (members.some((m) => !MEMBER_ID_RE.test(m.code)) || new Set(members.map((m) => m.code)).size !== members.length) return res.status(400).json({ error: 'Member IDs must be unique, 2-30 characters: lowercase letters, digits, dot, dash or underscore.' });
@@ -354,21 +407,21 @@ app.post('/signup', async (req, res) => {
   const country = await detectCountry(req), [language, currency] = countryDefaults(country);
   db.exec('BEGIN');
   try {
-    db.prepare("INSERT INTO users (userid, family_name, email, password_hash, status, country) VALUES (?, ?, ?, ?, 'pending', ?)")
+    db.prepare("INSERT INTO users (userid, family_name, email, password_hash, status, country, activated_at) VALUES (?, ?, ?, ?, 'active', ?, CURRENT_TIMESTAMP)")
       .run(email, family, email, hashPassword(b.password), country);
     const put = db.prepare('INSERT INTO user_settings (owner, key, value) VALUES (?,?,?)');
     put.run(email, 'language', language); put.run(email, 'currency', currency);
     seedCategories(email, country);
     // Age groups are filled in later on the household screen (it requires them to total the persons).
-    db.prepare('INSERT INTO households (owner, code, family_name, persons, children, adults, males, females, age_groups, buyers) VALUES (?,?,?,?,?,?,?,?,?,?)')
-      .run(email, email, family, persons, children, adults, males, females, JSON.stringify(Object.fromEntries(AGE_GROUPS.map((g) => [g, 0]))), members.length);
+    db.prepare('INSERT INTO households (owner, code, family_name, persons, children, adults, males, females, age_groups, buyers, city) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
+      .run(email, email, family, persons, children, adults, males, females, JSON.stringify(Object.fromEntries(AGE_GROUPS.map((g) => [g, 0]))), members.length, city);
     const addBuyer = db.prepare('INSERT INTO buyers (owner, code, name) VALUES (?,?,?)');
     for (const m of members) addBuyer.run(email, m.code, m.name);
     db.exec('COMMIT');
   } catch (e) { db.exec('ROLLBACK'); return res.status(500).json({ error: 'Could not create the account.' }); }
   signupHits.set(req.ip, [...hits, now]);
-  emailLink({ userid: email, family_name: family, email }, 'activate'); // not awaited: a slow mail server must not delay the response
-  res.json({ ok: true, pending: true, userid: email, country });
+  // emailLink({ userid: email, family_name: family, email }, 'activate'); // re-enable together with status 'pending' above
+  res.json({ ok: true, pending: false, userid: email, country });
 });
 // Activation link from the email.
 app.get('/activate', (req, res) => {
@@ -602,13 +655,12 @@ app.post('/api/check', (req, res) => {
   }));
 });
 
-app.get('/api/settings', (req, res) => res.json({ settings: getSettings(req.uid), languages: LANGUAGES, currencies: CURRENCIES }));
+app.get('/api/settings', (req, res) => res.json({ settings: getSettings(req.uid), languages: LANGUAGES }));
 app.put('/api/settings', (req, res) => {
-  const { language, currency, rate_includes_tax } = req.body;
+  const { language, rate_includes_tax } = req.body; // currency is fixed from the signup country, not user-selectable
   if (!LANGUAGES.includes(language)) return res.status(400).json({ error: 'Unknown language' });
-  if (!CURRENCIES.includes(currency)) return res.status(400).json({ error: 'Unknown currency' });
   const put = db.prepare('INSERT INTO user_settings (owner, key, value) VALUES (?, ?, ?) ON CONFLICT(owner, key) DO UPDATE SET value = excluded.value');
-  put.run(req.uid, 'language', language); put.run(req.uid, 'currency', currency); put.run(req.uid, 'rate_includes_tax', rate_includes_tax ? '1' : '0');
+  put.run(req.uid, 'language', language); put.run(req.uid, 'rate_includes_tax', rate_includes_tax ? '1' : '0');
   res.json({ settings: getSettings(req.uid) });
 });
 
@@ -633,12 +685,14 @@ app.post('/api/change-password', (req, res) => {
 // The household is the logged-in account: its Unique ID is the User ID and its family name comes from the account record.
 app.get('/api/household', (req, res) => {
   const h = db.prepare('SELECT * FROM households WHERE owner=?').get(req.uid);
-  res.json({ age_group_labels: AGE_GROUPS, userid: req.uid, family_name: req.user.family_name, household: h && { ...h, age_groups: JSON.parse(h.age_groups) } });
+  res.json({ age_group_labels: AGE_GROUPS, cities: citiesFor(req.user.country), userid: req.uid, family_name: req.user.family_name, household: h && { ...h, age_groups: JSON.parse(h.age_groups) } });
 });
 app.put('/api/household', (req, res) => {
   const b = req.body, n = (v) => Math.max(0, Math.floor(Number(v) || 0)), uid = req.uid;
   const name = String(b.family_name || '').trim();
   if (name.length < 2 || name.length > 60) return res.status(400).json({ error: 'Family name is required (2-60 characters)' });
+  const city = String(b.city || '').trim();
+  if (!citiesFor(req.user.country).includes(city)) return res.status(400).json({ error: 'Please choose your city of residence.' });
   const persons = n(b.persons), children = n(b.children), adults = n(b.adults), males = n(b.males), females = n(b.females);
   const ages = AGE_GROUPS.map((g) => n(b.age_groups?.[g]));
   const ageSum = ages.reduce((s, v) => s + v, 0);
@@ -648,11 +702,11 @@ app.put('/api/household', (req, res) => {
   const buyers = db.prepare('SELECT COUNT(*) c FROM buyers WHERE owner=?').get(uid).c;
   if (buyers > persons) return res.status(400).json({ error: `There are ${buyers} buyer members registered; persons cannot be fewer` });
   db.prepare('UPDATE users SET family_name=? WHERE userid=?').run(name, uid);
-  db.prepare(`INSERT INTO households (owner, code, family_name, persons, children, adults, males, females, age_groups, buyers)
-    VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(owner) DO UPDATE SET code=excluded.code, family_name=excluded.family_name,
+  db.prepare(`INSERT INTO households (owner, code, family_name, persons, children, adults, males, females, age_groups, buyers, city)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(owner) DO UPDATE SET city=excluded.city, code=excluded.code, family_name=excluded.family_name,
     persons=excluded.persons, children=excluded.children, adults=excluded.adults, males=excluded.males,
     females=excluded.females, age_groups=excluded.age_groups, buyers=excluded.buyers, updated_at=CURRENT_TIMESTAMP`)
-    .run(uid, uid, name, persons, children, adults, males, females, JSON.stringify(Object.fromEntries(AGE_GROUPS.map((g, i) => [g, ages[i]]))), buyers);
+    .run(uid, uid, name, persons, children, adults, males, females, JSON.stringify(Object.fromEntries(AGE_GROUPS.map((g, i) => [g, ages[i]]))), buyers, city);
   res.json({ ok: true });
 });
 // Next free "PREFIX-001" style code among this account's rows of a table.

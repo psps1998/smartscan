@@ -10,7 +10,7 @@ const transport = SMTP_HOST
 
 export const mailConfigured = !!transport;
 
-export async function sendMail({ to, subject, text, html }) {
+export async function sendMail({ to, subject, text, html, replyTo }) {
   if (!transport) { console.log(`[mail not configured, not sent] To: ${to}\nSubject: ${subject}\n${text}`); return; }
-  await transport.sendMail({ from: MAIL_FROM || 'Smartscan <no-reply@smartscan.in>', to, subject, text, html });
+  await transport.sendMail({ from: MAIL_FROM || 'Smartscan <no-reply@smartscan.in>', to, subject, text, html, replyTo });
 }
