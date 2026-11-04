@@ -2,7 +2,7 @@ import express from 'express';
 import multer from 'multer';
 import Anthropic from '@anthropic-ai/sdk';
 import { DatabaseSync } from 'node:sqlite';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import { createHmac, createHash, timingSafeEqual, scryptSync, randomBytes } from 'node:crypto';
 import { mountAdmin } from './admin/routes.js';
 import { sendMail } from './mailer.js';
@@ -458,6 +458,13 @@ app.use('/api', (req, res, next) => {
   if (!u) return res.status(401).json({ error: 'Not logged in' });
   req.user = u; req.uid = u.userid;
   next();
+});
+// The hero picture has a coin showing the signed-in user's currency symbol (INR/rupee when logged out). The file is a template: <!--CUR--> is replaced here.
+const CURRENCY_SYMBOLS = { INR: '₹', USD: '$', GBP: '£', EUR: '€', JPY: '¥', AUD: '$', CAD: '$', SGD: '$' };
+app.get('/hero.svg', (req, res) => {
+  const u = sessionUser(req), cur = u ? getSettings(u.userid).currency : 'INR';
+  res.set({ 'Content-Type': 'image/svg+xml; charset=utf-8', 'Cache-Control': 'no-store' });
+  res.send(readFileSync('public/hero.svg', 'utf8').replace('<!--CUR-->', CURRENCY_SYMBOLS[cur] || cur));
 });
 app.use(express.static('public'));
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });

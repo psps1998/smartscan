@@ -834,7 +834,7 @@ const notice = (msg) => {
 // --- Login state: the landing page is public; app screens need a login (modal, no page change). ---
 let authed = false, pendingTab = null;
 const setAuthed = (v, who) => {
-  authed = v; document.body.classList.toggle('authed', v); $('logout').textContent = v ? 'Logout' : 'Login';
+  authed = v; document.body.classList.toggle('authed', v); $('heroImg').src = 'hero.svg?t=' + Date.now(); // coin shows the signed-in user's currency $('logout').textContent = v ? 'Logout' : 'Login';
   $('accountWho').innerHTML = v && who ? `Signed in as<b>${esc(who.family_name)}</b>` : '';
 };
 const refreshSession = () => fetch('/session').then((r) => r.json()).then((j) => { setAuthed(j.loggedIn, j); if (j.loggedIn) loadSettingsInit(); });

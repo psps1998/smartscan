@@ -76,6 +76,6 @@
   <!-- coin -->
   <g transform="translate(90 450)">
     <circle r="26" fill="#fbbf24"/><circle r="19" fill="none" stroke="#f59e0b" stroke-width="3"/>
-    <text y="8" text-anchor="middle" font-family="system-ui,Arial,sans-serif" font-size="22" font-weight="700" fill="#b45309">$</text>
+    <text y="8" text-anchor="middle" font-family="system-ui,Arial,sans-serif" font-size="22" font-weight="700" fill="#b45309"><!--CUR--></text>
   </g>
 </svg>
